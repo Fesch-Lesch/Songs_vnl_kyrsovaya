@@ -1,0 +1,394 @@
+/* ========== БАЗА ========== */
+:root{--bg:#38201D;--panel:#423227;--dark:#321D1B;--input:#31261F;--teal:#51D4C9;--olive:#6C7D54;--brick:#AD473F;--cream:#F6EFE3;--muted:#997C68}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--cream);font:400 20px/1.4 'Alumni Sans SC',Arial,sans-serif}
+a{color:inherit;text-decoration:none}
+img{display:block}
+button{font-family:inherit}
+small{display:block;font-size:20px;color:rgba(255,255,255,.4)}
+.err{color:var(--brick);font-size:25px;margin:0 0 16px 8px}
+.ok{color:var(--teal);font-size:25px;margin:0 0 16px}
+.empty{font-size:30px;padding:40px 0}
+
+/* ========== ШАПКА ========== */
+header.top{height:113px;background:var(--dark);display:flex;align-items:center;justify-content:space-between;padding:0 22px}
+.logo{display:flex;align-items:center;gap:12px}
+.logo img{height:69px}
+.logo span,.auth-logo span{
+  font-family:'Irish Grover',cursive;font-size:50px;line-height:1;text-transform:uppercase;
+  background:linear-gradient(90deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+nav{display:flex;gap:26px;align-items:center}
+header.top .pill{height:50px;display:inline-flex;align-items:center;border-radius:30px;font-size:40px;padding:0 45px;border:none;background:none}
+header.top .pill.solid{background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%) border-box}
+header.top .pill.solid span,
+header.top .pill.solid b{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--dark)}
+header.top .pill.outline{border:2px solid transparent;
+  background:linear-gradient(var(--dark),var(--dark)) padding-box,
+             linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%) border-box}
+header.top .pill.outline span,
+header.top .pill.outline b{background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+header.top .pill.icon{width:81px;padding:0;justify-content:center}
+header.top .pill.icon img{height:25px;width:auto}
+header.top .pill.outline.icon img{height:27px}
+header.top .pill b{font-size:30px;margin-left:6px}
+header.top .pill:focus,header.top .pill:active,
+header.top .logout:focus,header.top .logout:active{outline:none}
+header.top .logout{width:66px;height:49px;border-radius:30px;border:none;display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,var(--brick) 25%,var(--olive) 100%)}
+header.top .logout img{height:26px}
+
+/* ========== КАТАЛОГ ========== */
+.filters{background:var(--panel);min-height:72px;display:flex;gap:18px;align-items:center;padding:12px 22px;flex-wrap:wrap}
+.filters input,.filters select{height:47px;background:var(--input);border:none;border-radius:10px;color:var(--muted);font:400 30px 'Alumni Sans SC',sans-serif;padding:0 16px}
+.filters input[name=q]{flex:1;min-width:240px}
+.filters option{background:var(--dark);color:var(--cream)}
+.chk{display:flex;gap:12px;align-items:center;font-size:30px;color:var(--muted)}
+.chk input{width:21px;height:21px;accent-color:var(--muted);border-radius:5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,430px);gap:41px 37px;justify-content:center;padding:40px 38px}
+.card{background:var(--panel);border-radius:20px;padding:30px 27px 32px}
+.cover{position:relative;display:block}
+.art{aspect-ratio:1;border-radius:10px;position:relative;
+  background:conic-gradient(from 180deg at 50% 50%,#38201D 0deg,#AD473F 83deg,#6C7D54 187deg,#51D4C9 275deg,#423227 348deg)}
+.art .artimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:10px}
+.badge{position:absolute;top:15px;left:14px;background:var(--bg);border-radius:20px;padding:3px 14px;font-size:20px;color:var(--teal);z-index:2}
+.badge.right{left:auto;right:14px;color:#FFF2E3}
+.card h3{margin:15px 0 0;font-size:30px;color:var(--teal);font-weight:400}
+.card h3 b{display:block;max-width:100%;min-width:0;font-size:50px;color:#fff;font-weight:400;line-height:1.05;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}
+.price{font-size:50px;color:var(--cream);line-height:1}
+.cartbtn{width:144px;height:51px;background:var(--bg);border:0;border-radius:10px;color:var(--teal);
+  font:400 30px/1 'Alumni Sans SC',sans-serif;cursor:pointer}
+.cartbtn:active{transform:scale(.97)}
+.cartbtn.incartbtn{color:var(--olive)}
+.btn{width:144px;height:51px;background:var(--bg);border:0;border-radius:10px;color:var(--teal);font:400 30px 'Alumni Sans SC';cursor:pointer}
+.btn.incart{color:var(--olive)}
+.btn.small{width:auto;height:40px;padding:0 20px;font-size:22px}
+/* контурная кнопка («в аренду»): градиентные рамка и текст, внутри — цвет панели */
+.btn.rent{background-color:transparent;border:2px solid transparent;color:transparent;
+  background-image:
+    linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%),
+    linear-gradient(var(--panel),var(--panel)),
+    linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  background-origin:border-box,padding-box,border-box;
+  -webkit-background-clip:text,padding-box,border-box;
+          background-clip:text,padding-box,border-box}
+.btn.rent.incart{background:none;border:2px solid var(--olive);color:var(--olive)}
+
+/* ========== МОДАЛКА ========== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9;padding:20px;overflow:auto}
+.modal{position:relative;background:var(--panel);border-radius:20px;width:min(1280px,96vw);min-height:660px;
+  padding:34px 30px 30px;display:grid;grid-template-columns:585px 1fr;gap:0 40px}
+.close{position:absolute;top:-9px;right:-9px;width:57px;height:38px;background:var(--bg);border-radius:10px;display:flex;align-items:center;justify-content:center}
+.close img{height:24px}
+.m-left,.m-right{min-width:0}
+.m-cover{position:relative;height:394px}
+.m-cover .art{position:absolute;left:0;top:0;width:376px;height:376px;z-index:2}
+.disc{position:absolute;left:175px;top:-8px;width:400px;height:394px;z-index:1}
+.disc.spin{animation:spin 3s linear infinite}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.play{position:absolute;left:327px;top:334px;width:84px;height:63px;background:var(--bg);border:0;border-radius:10px;z-index:3;
+  display:flex;align-items:center;justify-content:center;cursor:pointer}
+.play img{height:26px;width:auto;display:block}
+.play .ic-pause{display:none}
+.play.playing .ic-play{display:none}
+.play.playing .ic-pause{display:block}
+.m-artist{margin-top:15px;font-size:30px;line-height:1.15;color:var(--teal);
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-left h2{margin:0;font-size:50px;line-height:1.1;color:#fff;font-weight:400;
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-prices{display:flex;gap:144px;margin-top:26px}
+.m-prices div{font-size:50px;line-height:1;color:var(--cream)}
+.m-prices small{font-size:20px;line-height:1.2;color:rgba(255,255,255,.4)}
+.m-right{display:flex;flex-direction:column}
+.m-right .rl{font-size:20px;line-height:1.2;color:rgba(255,255,255,.4);font-weight:400;margin:0 0 4px}
+.tracks{display:grid;grid-template-columns:1fr 1fr;gap:2px 24px;margin:0 0 18px}
+.tracks ul{margin:0;padding:0;list-style:none;min-width:0}
+.tracks li{font-size:32px;line-height:40px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.about{font-size:32px;line-height:40px;color:var(--cream);margin:2px 0 18px}
+.m-meta{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-top:auto}
+.m-meta-col div{margin-top:14px}
+.m-meta-col div:first-child{margin-top:0}
+.m-meta-col span{display:block;font-size:30px;line-height:1.2;color:var(--cream)}
+.m-meta small{font-size:20px;line-height:1.2;color:rgba(255,255,255,.4)}
+.m-actions{display:flex;gap:14px;align-items:flex-end}
+
+/* ========== ПОДВАЛ ========== */
+footer{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:20px;background:var(--dark);padding:42px 66px 30px}
+footer h4{font-size:40px;color:var(--teal);font-weight:400;margin-bottom:6px}
+footer p{font-size:25px;line-height:1.4}
+.copy{grid-column:1;font-size:20px;color:rgba(255,255,255,.4);text-align:center;margin-top:14px}
+
+/* ========== КОРЗИНА / ОФОРМЛЕНИЕ ========== */
+.wrap-cart{max-width:1440px;margin:0 auto;padding:54px 31px 60px;display:grid;grid-template-columns:745px 586px;gap:58px;align-items:start}
+.line{position:relative;background:var(--panel);border-radius:20px;height:110px;margin-bottom:27px;padding:0 15px;display:flex;align-items:center;gap:13px}
+.thumb{width:85px;height:85px;border-radius:10px;flex:none}
+.g0{background:linear-gradient(142deg,var(--olive) 0%,var(--brick) 100%)}
+.g1{background:linear-gradient(221deg,var(--teal) 0%,var(--brick) 100%)}
+.g2{background:linear-gradient(305deg,var(--olive) 0%,var(--teal) 100%)}
+.g3{background:linear-gradient(245deg,var(--teal) 0%,#7B563D 100%)}
+.mid{flex:1;min-width:0}
+.chip{display:inline-block;background:rgba(246,239,227,.3);border-radius:10px;padding:2px 8px;font-size:20px;color:var(--cream)}
+.chip.on{background:var(--olive);color:var(--cream)}
+.typeswitch{display:inline-flex;gap:6px;margin-bottom:4px}
+.typeswitch .chip{border:0;cursor:pointer;font-family:inherit;font-size:20px}
+.line b{display:block;min-width:0;font-size:48px;font-weight:400;line-height:1.1;margin-top:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line .dates{position:absolute;right:66px;top:14px;font-size:20px;color:rgba(246,239,227,.5)}
+.line .price{font-size:48px;color:var(--teal)}
+.del{width:37px;height:30px;border-radius:15px;background:#2B1E15;border:0;cursor:pointer;flex:none}
+.del img{height:18px;margin:auto}
+.summary{background:var(--panel);border-radius:20px;padding:16px 19px 40px}
+.summary h1{font-size:50px;font-weight:400;margin:0 0 24px}
+.switch{width:540px;max-width:100%;height:39px;background:rgba(25.75,20.46,16.83,.44);border-radius:10px;display:flex;gap:5px;padding:4px}
+.switch input{display:none}
+.switch label{flex:1;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--teal);cursor:pointer;background:#271D16}
+.switch label:has(input:checked){background:linear-gradient(0deg,var(--teal) 0%,var(--olive) 100%);color:var(--dark)}
+.sumlabel{font-size:30px;color:rgba(246,239,227,.3);margin:26px 0 12px;display:flex;align-items:center;gap:14px}
+.sumlabel.ruled::after{content:"";flex:1;height:1px;background:var(--cream)}
+.selwrap{position:relative;width:540px;max-width:100%}
+.selwrap::after{content:"";position:absolute;right:20px;top:25px;border-left:11px solid transparent;border-right:11px solid transparent;border-top:13px solid var(--cream);pointer-events:none}
+.summary select,.summary input.addr,.addr{width:540px;max-width:100%;height:61px;background:rgba(246,239,227,.2);border:0;border-radius:10px;color:#fff;font:400 30px 'Alumni Sans SC';padding:0 15px;margin-bottom:22px}
+.summary select{appearance:none;-webkit-appearance:none}
+.sumrow{display:flex;justify-content:space-between;font-size:40px;margin:8px 0}
+.sumrow b{font-weight:400}
+.sumtotal{display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+.sumtotal span{font-size:40px}
+.sumtotal b{font-size:60px;color:var(--teal);font-weight:400}
+.paybtn{display:block;margin:44px auto 0;width:254px;height:61px;border:0;border-radius:10px;
+  background:linear-gradient(180deg,var(--olive) 0%,rgba(81,212,201,.7) 100%);color:var(--cream);
+  font:400 35px 'Alumni Sans SC';cursor:pointer;text-align:center;line-height:61px}
+
+/* ========== КАБИНЕТ ========== */
+.cab{max-width:1440px;margin:0 auto;padding:49px 46px 60px;display:grid;grid-template-columns:586px 1fr;gap:29px;align-items:start}
+.profile{background:var(--panel);border-radius:20px;padding:16px 22px 40px}
+.profile h1{font-size:50px;font-weight:400;margin:0 0 6px}
+.profile .sub{font-size:36px;color:rgba(246,239,227,.3);text-transform:uppercase;margin-bottom:26px}
+.profile input{width:540px;max-width:100%;height:61px;background:rgba(246,239,227,.2);border:0;border-radius:10px;color:#fff;font:400 30px 'Alumni Sans SC';padding:0 15px;margin-bottom:22px;display:block}
+.profile input::placeholder{color:rgba(255,255,255,.5)}
+.midbtn{display:block;margin:0 auto 34px;width:254px;height:61px;border:0;border-radius:10px;
+  background:linear-gradient(180deg,var(--olive) 0%,rgba(81,212,201,.7) 100%);color:var(--dark);font:400 30px 'Alumni Sans SC';cursor:pointer}
+.profile h2{font-size:36px;color:rgba(246,239,227,.3);font-weight:400;margin:0 0 26px}
+.orders-head{font-size:50px;font-weight:400;margin:0 0 24px}
+.orders-head b{color:var(--teal);font-size:64px;font-weight:400}
+.order{background:var(--panel);border-radius:20px;padding:14px 15px 16px;margin-bottom:20px}
+.order .top{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.status{font-size:20px;padding:2px 8px;border-radius:10px;color:var(--cream)}
+.status.issued{background:var(--olive)}
+.status.paid{background:linear-gradient(180deg,var(--olive) 0%,rgba(81,212,201,.7) 100%)}
+.status.overdue{background:var(--brick)}
+.status.done,.status.cancelled{background:rgba(246,239,227,.3)}
+.order .date{font-size:20px;color:rgba(246,239,227,.3)}
+.order .rent{margin-left:auto;font-size:20px;color:rgba(246,239,227,.5)}
+.titlerow{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:6px 0 8px;min-width:0}
+.titlerow b{flex:1;min-width:0;font-size:48px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlerow .price{white-space:nowrap;font-size:48px;color:var(--teal)}
+.acts{display:flex;align-items:center;gap:10px}
+.obtn{height:35px;border:0;border-radius:10px;font:400 20px 'Alumni Sans SC';cursor:pointer;padding:0 26px;
+  background:linear-gradient(180deg,var(--olive) 0%,rgba(81,212,201,.7) 100%);color:var(--dark)}
+/* контурная кнопка («Отменить»/«Удалить»): градиентные рамка и текст */
+.obtn.ghost{background-color:transparent;border:2px solid transparent;color:transparent;
+  background-image:
+    linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%),
+    linear-gradient(var(--panel),var(--panel)),
+    linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  background-origin:border-box,padding-box,border-box;
+  -webkit-background-clip:text,padding-box,border-box;
+          background-clip:text,padding-box,border-box}
+.obtn.fine{background:linear-gradient(180deg,var(--brick) 0%,#80624D 100%);color:var(--cream)}
+.fine-note{margin-left:auto;font-size:20px;color:rgba(246,239,227,.5)}
+
+/* ========== ВХОД / РЕГИСТРАЦИЯ / 2FA ========== */
+.authwrap{min-height:100vh;padding:90px 0 70px}
+.auth-logo{display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:34px}
+.auth-logo img{height:69px}
+.auth{width:634px;max-width:94%;margin:0 auto;background:var(--panel);border-radius:20px;padding:0 66px 46px}
+.auth .band{margin:0 -66px 40px;background:linear-gradient(90deg,var(--teal) 0%,var(--olive) 100%);border-radius:20px 20px 0 0;padding:36px 20px;text-align:center}
+.auth .band h1{font-size:50px;color:var(--dark);font-weight:400}
+.auth label{display:block;font-size:30px;color:var(--teal);margin:0 0 8px 8px}
+.auth input{width:501px;max-width:100%;height:72px;background:var(--input);border:0;border-radius:20px;color:var(--cream);font:400 30px 'Alumni Sans SC';padding:0 24px;margin:0 0 26px;display:block}
+.auth input::placeholder{color:rgba(152.75,124.03,104.28,.7)}
+.req{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 26px 8px}
+.req span{background:rgba(255,255,255,.1);color:rgba(255,255,255,.5);padding:4px 10px;border-radius:999px;font-size:10px;font-weight:700}
+.req span.ok{background:var(--olive);color:var(--cream)}
+.captchabox{width:501px;max-width:100%;height:328px;background:var(--input);border-radius:20px;position:relative;margin:0 0 40px}
+.pz{position:absolute;width:88px;height:89px;border:0;border-radius:10px;cursor:pointer}
+.pz.used{opacity:.25}
+.slot{position:absolute;width:88px;height:89px;background:var(--panel);border-radius:10px;overflow:hidden}
+.pzfill{width:100%;height:100%;border-radius:10px}
+.capbtn{position:absolute;right:42px;bottom:38px;width:157px;height:32px;border:0;border-radius:10px;background:var(--teal);color:var(--dark);font:400 20px 'Alumni Sans SC';cursor:pointer}
+.auth .submit{display:block;margin:0 auto;width:277px;height:64px;border:0;border-radius:10px;background:linear-gradient(90deg,var(--teal) 0%,var(--olive) 100%);color:var(--dark);font:400 30px 'Alumni Sans SC';cursor:pointer}
+.auth .alt{display:block;text-align:center;margin-top:26px;font-size:25px;color:var(--teal)}
+.codesmsg{text-align:center;font-size:30px;color:var(--teal);width:357px;margin:0 auto 10px}
+.codes{display:flex;gap:12px;justify-content:center;margin:34px 0 40px}
+.codes .cbox{width:66px;height:72px;margin:0;background:var(--input);border:0;border-radius:20px;color:var(--cream);font:400 40px 'Alumni Sans SC';text-align:center;padding:0}
+
+/* ========== АДМИНКА ========== */
+.admin h1{font-size:50px;font-weight:400}
+.tabs{display:flex;gap:10px;margin:16px 0 22px;flex-wrap:wrap}
+nav.tabs a{padding:8px 22px;border-radius:30px;font-size:25px}
+/* чужой раздел: залитый градиент бирюза(верх)→олива(низ), текст коричневый */
+nav.tabs a:not(.on){border:2px solid transparent;color:var(--dark);
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:border-box;background-clip:border-box}
+nav.tabs a:not(.on):hover{filter:brightness(1.08)}
+/* текущий раздел: прозрачный фон, градиентные текст и обводка */
+nav.tabs a.on{border:2px solid transparent;background-color:transparent;color:transparent;
+  background-image:
+    linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%),
+    linear-gradient(var(--bg),var(--bg)),
+    linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  background-origin:border-box,padding-box,border-box;
+  -webkit-background-clip:text,padding-box,border-box;
+          background-clip:text,padding-box,border-box}
+.admin table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border-radius:16px;overflow:hidden;margin:14px 0}
+.admin th,.admin td{padding:10px 12px;font-size:22px;text-align:left;border-bottom:1px solid #55402c;vertical-align:middle}
+.admin th{color:var(--teal);font-weight:400;font-size:20px}
+.admin tr:last-child td{border-bottom:none}
+.thumbadm{width:56px;height:56px;object-fit:cover;border-radius:8px;display:block;margin:2px 0}
+.thumbadm.big{width:120px;height:120px}
+.no{color:var(--muted);font-size:18px}
+.acts2{display:flex;gap:10px;align-items:center}
+.acts2 a{color:var(--teal);font-size:20px}
+.acts2 button,.delbtn{background:var(--brick);border:0;color:var(--cream);border-radius:8px;padding:4px 12px;font-size:18px;cursor:pointer}
+.inline{display:inline-flex}
+.admin select,.admin input,.admin textarea{background:var(--input);border:0;border-radius:8px;color:var(--cream);font:400 20px 'Alumni Sans SC',sans-serif;padding:6px 10px}
+.aform{background:var(--panel);border-radius:16px;padding:20px;display:grid;gap:12px;max-width:760px;margin:16px 0}
+.aform label{display:grid;gap:6px;font-size:20px;color:var(--teal)}
+.aform .row2{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.aform textarea{resize:vertical}
+
+/* ========== АДАПТИВ ========== */
+@media (max-width:1400px){
+  .grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+  .wrap-cart,.cab{grid-template-columns:1fr}
+  .modal{grid-template-columns:1fr}
+  header.top .pill{font-size:25px;padding:0 20px}
+  header.top .pill.icon{width:50px}
+  .card h3 b,.price,.titlerow b,.titlerow .price,.line b,.line .price{font-size:35px}
+}
+@media (max-width:1100px){
+  .modal{min-height:0}
+  .m-cover{height:340px}
+  .m-cover .art{width:300px;height:300px}
+  .disc{left:auto;right:0;width:320px;height:314px}
+  .play{left:251px;top:284px}
+  .m-prices{gap:60px}
+}
+
+/* ========== КОНТУРНАЯ КНОПКА = 3 НАСТОЯЩИХ СЛОЯ ==========
+   ::before — градиентная заготовка (будущая рамка)
+   ::after  — подложка цветом фона, оставляет от заготовки кольцо 2px
+   дочерний тег — градиентный текст                                     */
+header.top .pill.outline,
+nav.tabs a.on,
+.obtn.ghost,
+.btn.rent{position:relative;z-index:0;background:none;border:none}
+
+header.top .pill.outline::before,
+nav.tabs a.on::before,
+.obtn.ghost::before,
+.btn.rent::before{content:"";position:absolute;inset:0;border-radius:30px;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+header.top .pill.outline::after,
+nav.tabs a.on::after{content:"";position:absolute;inset:2px;border-radius:28px;background:var(--dark)}
+nav.tabs a.on::after{background:var(--bg)}
+.obtn.ghost::before,.btn.rent::before{border-radius:10px}
+.obtn.ghost::after,.btn.rent::after{content:"";position:absolute;inset:2px;border-radius:8px;background:var(--panel)}
+
+/* градиентный текст — отдельным тегом поверх слоёв */
+header.top .pill.outline>span,
+nav.tabs a.on>span,
+.obtn.ghost>b,
+.btn.rent>b{position:relative;z-index:1;font-weight:400;line-height:1;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* залитые кнопки без изменений схемы: один фон, один цвет текста */
+header.top .pill:not(.outline){background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+header.top .pill:not(.outline)>span{color:var(--dark)}
+header.top .pill:not(.outline)>b{color:var(--dark)}
+nav.tabs a:not(.on){background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+nav.tabs a:not(.on)>span{color:var(--dark)}
+
+/* «в корзине» у аренды: кольцо оливковое, текст оливковый */
+.btn.rent.incart::before{background:var(--olive)}
+.btn.rent.incart>b{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--olive)}
+
+/* убираем 1px-полосы: у неактивной пилюли градиент только один — на самой ссылке */
+.admin nav.tabs a, .admin nav.tabs a:not(.on), .admin nav.tabs a.on{border:none;outline:none;box-shadow:none}
+.admin .tabs a:not(.on)>span{background:none}
+
+/* ========== ОКНА СООБЩЕНИЙ: заголовок + пиктограмма (требование ТЗ) ========== */
+.alertwrap{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.alertwrap.hidden{display:none}
+.alertbox{width:716px;max-width:94%;background:var(--panel);border-radius:20px;padding:0 14px 30px;position:relative}
+.alertbox .band{margin:0 -14px 26px;background:linear-gradient(90deg,var(--teal) 0%,var(--olive) 100%);
+  border-radius:20px 20px 0 0;padding:28px 24px 22px}
+.alertbox .band.bad{background:linear-gradient(90deg,var(--brick) 0%,var(--olive) 100%)}
+.alertbox .band h1{font-size:40px;color:var(--dark);font-weight:400;line-height:1.15}
+.alertbody{display:grid;justify-items:center;gap:18px;padding:0 24px}
+.aicon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--dark)}
+.aicon.ok{background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+.aicon.bad{background:linear-gradient(180deg,var(--brick) 0%,#80624D 100%);color:var(--cream)}
+.alertbody p{font-size:30px;text-align:center;line-height:1.25}
+.btn.wide{width:220px;height:56px;font-size:28px}
+.alertbody.cols2{grid-template-columns:1fr 1fr;width:100%;gap:14px}
+.btn.wide.no{background:linear-gradient(90deg,var(--teal) 0%,var(--olive) 100%);color:var(--dark)}
+.btn.wide.yes{background:linear-gradient(90deg,var(--brick) 0%,var(--olive) 100%);color:var(--dark);
+  display:flex;align-items:center;justify-content:center}
+/* подсказки под полями */
+.hint{font-size:18px;color:var(--muted);margin:-14px 0 18px 8px}
+.auth .hint{margin:-18px 0 22px 8px}
+/* статус блокировки в админке */
+.chip.blocked{background:var(--brick);color:var(--cream)}
+
+/* ===== контурные кнопки: вложенные слои (как вкладки админки), псевдослои отключены ===== */
+header.top .pill.outline::before,header.top .pill.outline::after,
+.btn.rent::before,.btn.rent::after,
+.obtn.ghost::before,.obtn.ghost::after{content:none}
+
+/* контурная пилюля шапки: кольцо 2px + сердцевина цветом шапки + градиентный текст */
+header.top .pill.outline{padding:2px;border:none;background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+header.top .pill.outline>span{display:inline-flex;align-items:center;justify-content:center;
+  height:46px;padding:0 43px;border-radius:28px;background:var(--dark)}
+header.top .pill.outline>span>b{font:400 40px 'Alumni Sans SC',Arial,sans-serif;font-weight:400;line-height:1;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+/* контурная пилюля-корзина (страница cart): градиентная иконка + градиентная цифра */
+header.top .pill.outline.icon{width:85px}
+header.top .pill.outline.icon>span{width:81px;height:46px;padding:0;gap:6px}
+header.top .pill.outline.icon>span>img{height:25px;width:auto}
+header.top .pill.outline.icon>span>b{font-size:30px;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* «в аренду» в модалке: кольцо + сердцевина цветом модалки + градиентный текст */
+.btn.rent{width:auto;height:51px;padding:2px;border:none;border-radius:10px;display:inline-flex;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+.btn.rent>span{display:inline-flex;align-items:center;justify-content:center;height:47px;padding:0 24px;border-radius:8px;background:var(--panel)}
+.btn.rent>span>b{font:400 30px 'Alumni Sans SC',Arial,sans-serif;font-weight:400;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.btn.rent.incart{background:var(--olive)}
+.btn.rent.incart>span>b{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--olive)}
+
+/* контурные кнопки кабинета на всякий случай той же схемой */
+.obtn.ghost{width:auto;height:35px;padding:2px;border:none;border-radius:10px;display:inline-flex;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%)}
+.obtn.ghost>span{display:inline-flex;align-items:center;justify-content:center;height:31px;padding:0 24px;border-radius:8px;background:var(--panel)}
+.obtn.ghost>span>b{font:400 20px 'Alumni Sans SC',Arial,sans-serif;font-weight:400;
+  background:linear-gradient(180deg,var(--teal) 0%,var(--olive) 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* ========== КАПЧА: состояния кнопки «проверить» + возврат кусочков ========== */
+.capbtn{transition:background .2s,color .2s}
+.capbtn.ok{background:#6C7D54;color:#F6EFE3}          /* «проверено» из макета */
+.capbtn.bad{background:#AD473F;color:#F6EFE3}          /* ошибка сборки */
+.slot{cursor:pointer}                                   /* слот кликаблен = вернуть кусочек */
+.slot .pzfill{cursor:pointer}
+.captchabox.locked .pz,
+.captchabox.locked .slot{pointer-events:none}           /* после «проверено» паззл не трогаем */
+.captchabox.locked{outline:2px solid #6C7D54;outline-offset:2px}

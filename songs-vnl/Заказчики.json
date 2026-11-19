@@ -1,0 +1,6 @@
+[
+  {"name":"Иван Петров","email":"ivan.p@example.com","phone":"+7 (900) 111-22-33","address":"Москва, ул. Тверская, 1"},
+  {"name":"Мария Смирнова","email":"m.smirnova@example.com","phone":"+7 (901) 222-33-44","address":"Москва, Ленинский, 45"},
+  {"name":"Пётр Сидоров","email":"sidorov@example.com","phone":"+7 (902) 333-44-55","address":"Москва, ул. Мира, 8"},
+  {"name":"Анна Козлова","email":"a.kozlova@example.com","phone":"+7 (903) 444-55-66","address":"Химки, ул. Лесная, 12"}
+]

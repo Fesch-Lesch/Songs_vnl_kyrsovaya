@@ -1,0 +1,32 @@
+{
+  "info": {"name": "songs.vnl API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "variable": [{"key": "base", "value": "http://localhost:3000"}],
+  "item": [
+    {"name": "albums", "request": {"method": "GET", "url": "{{base}}/api.php?method=albums"},
+     "event": [{"listen": "test", "script": {"exec": [
+       "pm.test('status 200', () => pm.response.code === 200);",
+       "const j = pm.response.json();",
+       "pm.test('ok=true', () => j.ok === true);",
+       "pm.test('data — массив', () => Array.isArray(j.data));",
+       "pm.test('поля обработаны', () => pm.expect(j.data[0]).to.have.all.keys('id','name','category','media','year','buy_price','rent','available');"
+     ]}}]},
+    {"name": "album", "request": {"method": "GET", "url": "{{base}}/api.php?method=album&id=1"},
+     "event": [{"listen": "test", "script": {"exec": [
+       "pm.test('status 200', () => pm.response.code === 200);",
+       "const j = pm.response.json();",
+       "pm.test('есть tracks', () => Array.isArray(j.data.tracks));"
+     ]}}]},
+    {"name": "notes", "request": {"method": "GET", "url": "{{base}}/api.php?method=notes"},
+     "event": [{"listen": "test", "script": {"exec": [
+       "pm.test('status 200', () => pm.response.code === 200);",
+       "const j = pm.response.json();",
+       "pm.test('title_user присутствует', () => pm.expect(j.data[0]).to.have.property('title_user');",
+       "pm.test('formatted_date шаблон дд.мм.гггг чч:мм', () => pm.expect(j.data[0].formatted_date).to.match(/^\\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}$/);"
+     ]}}]},
+    {"name": "note 404", "request": {"method": "GET", "url": "{{base}}/api.php?method=note&id=999999"},
+     "event": [{"listen": "test", "script": {"exec": ["pm.test('status 404', () => pm.response.code === 404);"]}}]},
+    {"name": "note_add без сессии (403)", "request": {"method": "POST", "url": "{{base}}/api.php?method=note_add",
+      "body": {"mode": "raw", "raw": "{\"title\":\"Тест\",\"body\":\"проверка\"}"}},
+     "event": [{"listen": "test", "script": {"exec": ["pm.test('status 403', () => pm.response.code === 403);"]}}]}
+  ]
+}
