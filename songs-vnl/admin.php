@@ -2,14 +2,18 @@
 require 'config.php';
 $page = 'admin';
 $user = current_user($pdo);
-if (!$user || $user['role'] !== 'admin') {
+if (!is_array($user) || ($user['role'] ?? '') !== 'admin') {
     header('Location: index.php');
     exit;
 }
 
+$adminId = (int)($user['id'] ?? 0);
+
 $tab = $_GET['tab'] ?? 'albums';
-$allowedTabs = ['albums', 'orders', 'users', 'stores', 'cost', 'sql'];
-if (!in_array($tab, $allowedTabs, true)) $tab = 'albums';
+$allowedTabs = ['albums', 'orders', 'users', 'stores', 'cost', 'sql', 'supplies', 'docs', 'backups'];
+if (!in_array($tab, $allowedTabs, true)) {
+    $tab = 'albums';
+}
 
 $msg = '';
 $err = '';
@@ -33,12 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         switch ($act) {
             case 'album_save':
-                $id    = (int)($_POST['id'] ?? 0);
-                $cover = trim($_POST['cover_old'] ?? '');
-                $audio = trim($_POST['audio_old'] ?? '');
-                $price = max(1.0, (float)($_POST['price'] ?? 3600));
+                $id        = (int)($_POST['id'] ?? 0);
+                $cover     = trim($_POST['cover_old'] ?? '');
+                $audio     = trim($_POST['audio_old'] ?? '');
+                $price     = max(1.0, (float)($_POST['price'] ?? 3600));
                 $rentPrice = max(1.0, (float)($_POST['rent_price'] ?? 199));
-                $stock = max(0, (int)($_POST['stock'] ?? 1));
+                $stock     = max(0, (int)($_POST['stock'] ?? 1));
                 $warnCover = '';
                 $warnAudio = '';
 
@@ -101,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $audio !== '' ? $audio : null,
                             $id,
                         ]);
+                    log_action($pdo, $adminId, 'album_update', 'album', (string)$id, 'Обновлён альбом #' . $id);
                 } else {
                     $pdo->prepare('INSERT INTO albums (artist,title,year,country,format,genre,price,rent_price,stock,popularity,about,cover,audio) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
                         ->execute([
@@ -119,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $audio !== '' ? $audio : null,
                         ]);
                     $id = (int)$pdo->lastInsertId();
+                    log_action($pdo, $adminId, 'album_create', 'album', (string)$id, 'Добавлен альбом #' . $id);
                 }
 
                 $pdo->prepare('DELETE FROM songs WHERE album_id=?')->execute([$id]);
@@ -135,41 +141,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'album_del':
-                $pdo->prepare('DELETE FROM albums WHERE id=?')->execute([(int)$_POST['id']]);
+                $delId = (int)($_POST['id'] ?? 0);
+                $pdo->prepare('DELETE FROM albums WHERE id=?')->execute([$delId]);
+                log_action($pdo, $adminId, 'album_delete', 'album', (string)$delId, 'Удалён альбом #' . $delId);
                 $msg = 'Альбом удалён';
                 break;
 
             case 'order_status':
+                $oid = (int)($_POST['id'] ?? 0);
                 $stt = in_array($_POST['status'] ?? '', ['paid', 'issued', 'done', 'cancelled'], true) ? $_POST['status'] : 'paid';
-                $pdo->prepare('UPDATE orders SET status=? WHERE id=?')->execute([$stt, (int)$_POST['id']]);
+                $pdo->prepare('UPDATE orders SET status=? WHERE id=?')->execute([$stt, $oid]);
+                log_action($pdo, $adminId, 'order_status', 'order', (string)$oid, "Статус заказа #$oid -> $stt");
                 $msg = 'Статус заказа обновлён';
                 break;
 
+            case 'delivery_update':
+                $oid = (int)($_POST['order_id'] ?? 0);
+                $courier = trim($_POST['courier'] ?? '');
+                $dStatus = in_array($_POST['delivery_status'] ?? '', ['pending', 'packing', 'shipped', 'delivered'], true)
+                    ? $_POST['delivery_status']
+                    : 'pending';
+                $pdo->prepare('UPDATE orders SET courier = ?, delivery_status = ? WHERE id = ?')
+                    ->execute([$courier !== '' ? $courier : null, $dStatus, $oid]);
+                log_action($pdo, $adminId, 'delivery_update', 'order', (string)$oid, "Доставка заказа #$oid: $dStatus ($courier)");
+                $msg = 'Данные доставки обновлены';
+                break;
+
             case 'order_del':
-                $pdo->prepare('DELETE FROM orders WHERE id=?')->execute([(int)$_POST['id']]);
+                $oid = (int)($_POST['id'] ?? 0);
+                $stOrd = $pdo->prepare('SELECT * FROM orders WHERE id = ?');
+                $stOrd->execute([$oid]);
+                $snap = $stOrd->fetch();
+                $pdo->prepare('DELETE FROM orders WHERE id=?')->execute([$oid]);
+                log_action($pdo, $adminId, 'order_delete', 'order', (string)$oid, 'Удалён заказ #' . $oid, is_array($snap) ? $snap : null);
                 $msg = 'Заказ удалён';
                 break;
 
             case 'user_role':
-                if ((int)$_POST['id'] === (int)$user['id']) {
+                $uid = (int)($_POST['id'] ?? 0);
+                if ($uid === $adminId) {
                     $err = 'Нельзя изменить собственную роль';
                 } else {
                     $role = ($_POST['role'] ?? '') === 'admin' ? 'admin' : 'client';
-                    $pdo->prepare('UPDATE users SET role=? WHERE id=?')->execute([$role, (int)$_POST['id']]);
+                    $pdo->prepare('UPDATE users SET role=? WHERE id=?')->execute([$role, $uid]);
+                    log_action($pdo, $adminId, 'user_role', 'user', (string)$uid, "Роль пользователя #$uid -> $role");
                     $msg = 'Роль обновлена';
                 }
                 break;
 
             case 'user_unblock':
-                $pdo->prepare('UPDATE users SET is_blocked = 0, failed_attempts = 0 WHERE id = ?')->execute([(int)$_POST['id']]);
+                $uid = (int)($_POST['id'] ?? 0);
+                $pdo->prepare('UPDATE users SET is_blocked = 0, failed_attempts = 0 WHERE id = ?')->execute([$uid]);
+                log_action($pdo, $adminId, 'user_unblock', 'user', (string)$uid, 'Разблокирован пользователь #' . $uid);
                 $msg = 'Пользователь разблокирован';
                 break;
 
             case 'user_del':
-                if ((int)$_POST['id'] === (int)$user['id']) {
+                $uid = (int)($_POST['id'] ?? 0);
+                if ($uid === $adminId) {
                     $err = 'Нельзя удалить самого себя';
                 } else {
-                    $pdo->prepare('DELETE FROM users WHERE id=?')->execute([(int)$_POST['id']]);
+                    $pdo->prepare('DELETE FROM users WHERE id=?')->execute([$uid]);
+                    log_action($pdo, $adminId, 'user_delete', 'user', (string)$uid, 'Удалён пользователь #' . $uid);
                     $msg = 'Пользователь удалён';
                 }
                 break;
@@ -181,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif (is_file(__DIR__ . '/Заказчики.json')) {
                     $json = file_get_contents(__DIR__ . '/Заказчики.json');
                 }
-                if ($json === null) {
+                if ($json === null || $json === false) {
                     $err = 'Файл Заказчики.json не найден: приложите файл или положите его в корень проекта';
                 } else {
                     $rows = json_decode($json, true);
@@ -202,32 +235,176 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $email,
                                 password_hash('Client1!', PASSWORD_DEFAULT),
                                 'client',
-                                trim($r['name'] ?? ''),
-                                trim($r['phone'] ?? ''),
-                                trim($r['address'] ?? ''),
+                                encrypt_pii(trim($r['name'] ?? '')),
+                                encrypt_pii(trim($r['phone'] ?? '')),
+                                encrypt_pii(trim($r['address'] ?? '')),
                             ]);
                             $n++;
                         }
+                        log_action($pdo, $adminId, 'users_import', 'user', '', "Импортировано заказчиков: $n");
                         $msg = 'Импортировано заказчиков: ' . $n;
                     }
                 }
                 break;
 
             case 'store_save':
-                $id = (int)($_POST['id'] ?? 0);
-                if ($id > 0) {
+                $sid = (int)($_POST['id'] ?? 0);
+                if ($sid > 0) {
                     $pdo->prepare('UPDATE stores SET address=?,hours=? WHERE id=?')
-                        ->execute([trim($_POST['address'] ?? ''), trim($_POST['hours'] ?? ''), $id]);
+                        ->execute([trim($_POST['address'] ?? ''), trim($_POST['hours'] ?? ''), $sid]);
+                    log_action($pdo, $adminId, 'store_update', 'store', (string)$sid, 'Обновлён магазин #' . $sid);
                 } else {
                     $pdo->prepare('INSERT INTO stores (address,hours) VALUES (?,?)')
                         ->execute([trim($_POST['address'] ?? ''), trim($_POST['hours'] ?? '')]);
+                    $sid = (int)$pdo->lastInsertId();
+                    log_action($pdo, $adminId, 'store_create', 'store', (string)$sid, 'Добавлен магазин #' . $sid);
                 }
                 $msg = 'Магазин сохранён';
                 break;
 
             case 'store_del':
-                $pdo->prepare('DELETE FROM stores WHERE id=?')->execute([(int)$_POST['id']]);
+                $sid = (int)($_POST['id'] ?? 0);
+                $pdo->prepare('DELETE FROM stores WHERE id=?')->execute([$sid]);
+                log_action($pdo, $adminId, 'store_delete', 'store', (string)$sid, 'Удалён магазин #' . $sid);
                 $msg = 'Магазин удалён';
+                break;
+
+            case 'supply_add':
+                $albumId  = (int)($_POST['album_id'] ?? 0);
+                $qty      = max(1, (int)($_POST['qty'] ?? 1));
+                $supplier = trim($_POST['supplier'] ?? 'Поставщик');
+                $pdo->prepare('INSERT INTO supplies (album_id, qty, supplier) VALUES (?,?,?)')
+                    ->execute([$albumId, $qty, $supplier]);
+                $pdo->prepare('UPDATE albums SET stock = stock + ? WHERE id = ?')
+                    ->execute([$qty, $albumId]);
+                log_action($pdo, $adminId, 'supply_add', 'album', (string)$albumId, "Поставка +$qty шт. ($supplier)");
+                $msg = 'Поставка проведена, остаток обновлён';
+                break;
+
+            case 'promo_save':
+                $code = strtoupper(trim($_POST['code'] ?? ''));
+                $pct  = max(1, min(90, (int)($_POST['discount_percent'] ?? 10)));
+                if ($code !== '') {
+                    $pdo->prepare('INSERT INTO promos (code, discount_percent, active) VALUES (?,?,1)
+                                   ON DUPLICATE KEY UPDATE discount_percent=VALUES(discount_percent), active=1')
+                        ->execute([$code, $pct]);
+                    log_action($pdo, $adminId, 'promo_save', 'promo', $code, "Промокод $code (-$pct%)");
+                    $msg = 'Промокод сохранён';
+                }
+                break;
+
+            case 'tpl_save':
+                $key   = $_POST['doc_key'] ?? 'rental_contract';
+                $title = trim($_POST['title'] ?? '');
+                $body  = $_POST['body_html'] ?? '';
+                $pdo->prepare('UPDATE doc_templates SET title = ?, body_html = ? WHERE doc_key = ?')
+                    ->execute([$title, $body, $key]);
+                log_action($pdo, $adminId, 'tpl_save', 'doc_template', $key, "Обновлён шаблон $key");
+                $msg = 'Шаблон документа сохранён';
+                break;
+
+            case 'backup_create':
+                if (!is_dir(BACKUP_DIR)) {
+                    mkdir(BACKUP_DIR, 0777, true);
+                }
+                $baseName = 'В_' . date('d_m_Y') . '.sql';
+                $targetPath = BACKUP_DIR . '/' . $baseName;
+
+                $cutoff = time() - (30 * 86400);
+                foreach (glob(BACKUP_DIR . '/В_*.sql') ?: [] as $oldFile) {
+                    if (filemtime($oldFile) < $cutoff && $oldFile !== $targetPath) {
+                        @unlink($oldFile);
+                    }
+                }
+
+                $existing = glob(BACKUP_DIR . '/В_*.sql') ?: [];
+                if (!is_file($targetPath) && count($existing) >= 30) {
+                    usort($existing, fn($a, $b) => filemtime($a) <=> filemtime($b));
+                    $targetPath = $existing[0];
+                }
+
+                $dump = "-- SONGS.VNL backup " . date('c') . "\nSET FOREIGN_KEY_CHECKS=0;\n";
+                foreach (['users', 'albums', 'songs', 'stores', 'promos', 'doc_templates', 'orders', 'order_items'] as $tbl) {
+                    $rows = $pdo->query("SELECT * FROM `$tbl`")->fetchAll();
+                    foreach ($rows as $r) {
+                        $vals = array_map(
+                            fn($v) => $v === null ? 'NULL' : $pdo->quote((string)$v),
+                            array_values($r)
+                        );
+                        $cols = array_map(fn($c) => "`$c`", array_keys($r));
+                        $dump .= "REPLACE INTO `$tbl` (" . implode(',', $cols) . ") VALUES (" . implode(',', $vals) . ");\n";
+                    }
+                }
+                $dump .= "SET FOREIGN_KEY_CHECKS=1;\n";
+                file_put_contents($targetPath, $dump);
+
+                log_action($pdo, $adminId, 'backup_create', 'backup', basename($targetPath), 'Создан/обновлён бэкап ' . basename($targetPath));
+                $msg = 'Резервная копия сохранена: ' . basename($targetPath);
+                break;
+
+            case 'backup_delete':
+                $fname = basename($_POST['backup_file'] ?? '');
+                $path = BACKUP_DIR . '/' . $fname;
+                if ($fname !== '' && is_file($path) && str_starts_with($fname, 'В_')) {
+                    unlink($path);
+                    log_action($pdo, $adminId, 'backup_delete', 'backup', $fname, 'Удалён бэкап ' . $fname);
+                    $msg = 'Резервная копия удалена: ' . $fname;
+                } else {
+                    $err = 'Не удалось удалить файл резервной копии';
+                }
+                break;
+
+            case 'backup_restore':
+                $fname = basename($_POST['backup_file'] ?? '');
+                $path  = BACKUP_DIR . '/' . $fname;
+                if ($fname !== '' && is_file($path)) {
+                    $sqlContent = file_get_contents($path) ?: '';
+                    foreach (array_filter(array_map('trim', explode(";\n", $sqlContent))) as $stmt) {
+                        $pdo->exec($stmt);
+                    }
+                    log_action($pdo, $adminId, 'backup_restore', 'backup', $fname, 'Восстановление из бэкапа ' . $fname);
+                    $msg = 'База восстановлена из ' . $fname;
+                } else {
+                    $err = 'Файл резервной копии не найден';
+                }
+                break;
+
+            case 'audit_restore':
+                $logId = (int)($_POST['log_id'] ?? 0);
+                $st = $pdo->prepare('SELECT * FROM audit_log WHERE id = ?');
+                $st->execute([$logId]);
+                $entry = $st->fetch();
+                $snap = null;
+                if ($entry && ($entry['entity_type'] ?? '') === 'order') {
+                    if (!empty($entry['snapshot_json'])) {
+                        $snap = json_decode((string)$entry['snapshot_json'], true);
+                    } elseif (!empty($entry['description'])) {
+                        $parts = explode(' | ', (string)$entry['description']);
+                        $lastPart = end($parts);
+                        if (is_string($lastPart) && str_starts_with(trim($lastPart), '{')) {
+                            $snap = json_decode(trim($lastPart), true);
+                        }
+                    }
+                }
+                if (is_array($snap) && !empty($snap['id'])) {
+                    $pdo->prepare("INSERT IGNORE INTO orders (id, user_id, status, delivery, delivery_status, address, subtotal, discount, delivery_cost, total, created_at)
+                                   VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+                        ->execute([
+                            (int)$snap['id'],
+                            (int)($snap['user_id'] ?? $adminId),
+                            $snap['status'] ?? 'paid',
+                            $snap['delivery'] ?? ($snap['delivery_type'] ?? 'pickup'),
+                            $snap['delivery_status'] ?? 'pending',
+                            $snap['address'] ?? '',
+                            (float)($snap['subtotal'] ?? 0),
+                            (float)($snap['discount'] ?? 0),
+                            (float)($snap['delivery_cost'] ?? 0),
+                            (float)($snap['total'] ?? 0),
+                            $snap['created_at'] ?? date('Y-m-d H:i:s'),
+                        ]);
+                    log_action($pdo, $adminId, 'audit_restore', 'order', (string)$snap['id'], "Восстановление заказа из лога #$logId");
+                    $msg = 'Заказ #' . (int)$snap['id'] . ' восстановлен из лога';
+                }
                 break;
 
             case 'sql':
@@ -237,6 +414,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $st = $pdo->query($q);
                     $sqlRows = $st->columnCount() > 0 ? $st->fetchAll() : [];
+                    log_action($pdo, $adminId, 'sql_exec', 'sql', '', 'Выполнен SQL-запрос в консоли');
                     $msg = 'Выполнено: строк в выборке ' . count($sqlRows) . ', затронуто строк ' . $st->rowCount();
                 }
                 break;
@@ -296,37 +474,40 @@ require 'header.php';
 .admin .thumbadm{width:56px;height:56px;object-fit:cover;border-radius:8px;display:block;margin:2px 0}
 .admin .thumbadm.big{width:120px;height:120px}
 .admin .no{color:#997C68;font-size:18px}
-.admin .items{font-size:16px;color:#997C68;max-width:420px}
-.admin .acts2{display:flex;gap:10px;align-items:center}
+.admin .items{font-size:16px;color:#997C68;max-width:340px}
+.admin .acts2{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .admin .acts2 a{color:#51D4C9;font-size:20px}
 .admin .acts2 button,.admin .delbtn{background:#AD473F;border:0;color:#F6EFE3;border-radius:8px;padding:4px 12px;font-size:18px;cursor:pointer}
-.admin .inline{display:inline-flex}
+.admin .inline{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap}
 .admin .chip.blocked{background:#AD473F;color:#F6EFE3}
 .admin select,.admin input,.admin textarea{background:#31261F;border:0;border-radius:8px;color:#F6EFE3;font:400 20px 'Alumni Sans SC',Arial,sans-serif;padding:6px 10px}
-.admin .aform{background:#423227;border-radius:16px;padding:20px;display:grid;gap:12px;max-width:760px;margin:16px 0}
+.admin .aform{background:#423227;border-radius:16px;padding:20px;display:grid;gap:12px;max-width:860px;margin:16px 0}
 .admin .aform label{display:grid;gap:6px;font-size:20px;color:#51D4C9}
 .admin .aform .row2{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .admin .aform textarea{resize:vertical}
-.admin .btn.small{width:auto;height:40px;padding:0 20px;font-size:22px}
+.admin .btn.small{width:auto;height:40px;padding:0 18px;font-size:20px;display:inline-flex;align-items:center;justify-content:center}
 .admin .sqlpre{background:#31261F;border-radius:12px;padding:14px;font-size:16px;color:#9fe8d8;overflow:auto;white-space:pre-wrap;margin:10px 0}
-.admin .aform .btn:not(.rent){
-  width:auto;
-  min-width:144px;
-  height:47px;
-  padding:0 24px;
-  font-size:24px;
-  white-space:nowrap;
+.admin .aform .btn:not(.rent):not(.small){
+  width:auto;min-width:144px;height:47px;padding:0 24px;font-size:24px;white-space:nowrap;
 }
+.admin .flash-msg{padding:10px 14px;border-radius:10px;margin:10px 0;font-size:20px;background:#2f4a3e;color:#d6f5e6}
+.admin .flash-err{padding:10px 14px;border-radius:10px;margin:10px 0;font-size:20px;background:#5a2622;color:#ffd8d5}
 </style>
 
 <main class="wrap admin">
 <h1>Админ-панель</h1>
+
+<?php if ($msg !== ''): ?><div class="flash-msg"><?= e($msg) ?></div><?php endif; ?>
+<?php if ($err !== ''): ?><div class="flash-err"><?= e($err) ?></div><?php endif; ?>
 
 <nav class="tabs">
   <a class="<?= $tab === 'albums' ? 'on' : '' ?>" href="?tab=albums"><span><b>альбомы</b></span></a>
   <a class="<?= $tab === 'orders' ? 'on' : '' ?>" href="?tab=orders"><span><b>заказы</b></span></a>
   <a class="<?= $tab === 'users' ? 'on' : '' ?>" href="?tab=users"><span><b>пользователи</b></span></a>
   <a class="<?= $tab === 'stores' ? 'on' : '' ?>" href="?tab=stores"><span><b>магазины</b></span></a>
+  <a class="<?= $tab === 'supplies' ? 'on' : '' ?>" href="?tab=supplies"><span><b>поставки и промо</b></span></a>
+  <a class="<?= $tab === 'docs' ? 'on' : '' ?>" href="?tab=docs"><span><b>шаблоны и отчёты</b></span></a>
+  <a class="<?= $tab === 'backups' ? 'on' : '' ?>" href="?tab=backups"><span><b>резерв и логи</b></span></a>
   <a class="<?= $tab === 'cost' ? 'on' : '' ?>" href="?tab=cost"><span><b>стоимость заказов</b></span></a>
   <a class="<?= $tab === 'sql' ? 'on' : '' ?>" href="?tab=sql"><span><b>SQL-консоль</b></span></a>
 </nav>
@@ -394,7 +575,7 @@ require 'header.php';
 
 <?php elseif ($tab === 'orders'): ?>
   <table>
-    <tr><th>id</th><th>user</th><th>статус</th><th>состав</th><th>сумма</th><th>дата</th><th></th></tr>
+    <tr><th>id</th><th>user</th><th>статус</th><th>доставка / курьер</th><th>состав</th><th>сумма</th><th>дата</th><th></th></tr>
     <?php
     $orders = $pdo->query('SELECT o.*, u.login,
         (SELECT GROUP_CONCAT(CONCAT(a.artist, " - ", a.title) SEPARATOR "; ")
@@ -416,10 +597,24 @@ require 'header.php';
             </select>
           </form>
         </td>
+        <td>
+          <form method="post" class="inline">
+            <input type="hidden" name="act" value="delivery_update">
+            <input type="hidden" name="order_id" value="<?= (int)$o['id'] ?>">
+            <select name="delivery_status">
+              <?php foreach (['pending', 'packing', 'shipped', 'delivered'] as $ds): ?>
+                <option value="<?= $ds ?>" <?= ($o['delivery_status'] ?? 'pending') === $ds ? 'selected' : '' ?>><?= $ds ?></option>
+              <?php endforeach; ?>
+            </select>
+            <input name="courier" value="<?= e($o['courier'] ?? '') ?>" placeholder="Курьер" style="width:120px">
+            <button class="btn small">ок</button>
+          </form>
+        </td>
         <td class="items"><?= e($o['items'] ?? '') ?></td>
         <td><?= money($o['total']) ?></td>
         <td><?= e($o['created_at']) ?></td>
-        <td>
+        <td class="acts2">
+          <a href="doc.php?order_id=<?= (int)$o['id'] ?>&doc=invoice" target="_blank">док</a>
           <form method="post" class="inline" onsubmit="return confirm('Удалить заказ?')">
             <input type="hidden" name="act" value="order_del">
             <input type="hidden" name="id" value="<?= (int)$o['id'] ?>">
@@ -443,9 +638,9 @@ require 'header.php';
         <td><?= (int)$u2['id'] ?></td>
         <td><?= e($u2['login']) ?></td>
         <td><?= e($u2['email']) ?></td>
-        <td><?= e($u2['name']) ?></td>
+        <td><?= e(decrypt_pii($u2['name'] ?? '')) ?></td>
         <td>
-          <?php if ((int)$u2['id'] === (int)$user['id']): ?><span class="chip"><?= e($u2['role']) ?></span>
+          <?php if ((int)$u2['id'] === $adminId): ?><span class="chip"><?= e($u2['role']) ?></span>
           <?php else: ?>
             <form method="post" class="inline">
               <input type="hidden" name="act" value="user_role">
@@ -460,7 +655,7 @@ require 'header.php';
         <td>
           <?php if ($u2['is_blocked']): ?>
             <span class="chip blocked">заблокирован (<?= (int)$u2['failed_attempts'] ?>)</span>
-            <?php if ((int)$u2['id'] !== (int)$user['id']): ?>
+            <?php if ((int)$u2['id'] !== $adminId): ?>
               <form method="post" class="inline">
                 <input type="hidden" name="act" value="user_unblock">
                 <input type="hidden" name="id" value="<?= (int)$u2['id'] ?>">
@@ -470,7 +665,7 @@ require 'header.php';
           <?php else: ?><span class="chip">активен</span><?php endif; ?>
         </td>
         <td>
-          <?php if ((int)$u2['id'] !== (int)$user['id']): ?>
+          <?php if ((int)$u2['id'] !== $adminId): ?>
             <form method="post" class="inline" onsubmit="return confirm('Удалить пользователя?')">
               <input type="hidden" name="act" value="user_del">
               <input type="hidden" name="id" value="<?= (int)$u2['id'] ?>">
@@ -513,6 +708,115 @@ require 'header.php';
       <?php if ($editStore): ?><a class="btn rent" href="?tab=stores"><span><b>отмена</b></span></a><?php endif; ?>
     </div>
   </form>
+
+<?php elseif ($tab === 'supplies'): ?>
+  <form class="aform" method="post">
+    <input type="hidden" name="act" value="supply_add">
+    <div class="row2">
+      <label>альбом<select name="album_id"><?php foreach ($pdo->query('SELECT id, artist, title FROM albums ORDER BY id') as $al): ?><option value="<?= (int)$al['id'] ?>"><?= e($al['artist'] . ' — ' . $al['title']) ?></option><?php endforeach; ?></select></label>
+      <label>количество<input type="number" min="1" name="qty" value="5" required></label>
+      <label>поставщик<input name="supplier" value="VinylDist" required></label>
+    </div>
+    <button class="btn">оприходовать</button>
+  </form>
+
+  <form class="aform" method="post">
+    <input type="hidden" name="act" value="promo_save">
+    <div class="row2">
+      <label>промокод<input name="code" placeholder="SALE20" required></label>
+      <label>скидка (%)<input type="number" min="1" max="90" name="discount_percent" value="15" required></label>
+    </div>
+    <button class="btn">сохранить промокод</button>
+  </form>
+
+  <table>
+    <tr><th>код</th><th>скидка</th><th>статус</th></tr>
+    <?php foreach ($pdo->query('SELECT * FROM promos ORDER BY id') as $pr): ?>
+      <tr><td><?= e($pr['code']) ?></td><td><?= (int)$pr['discount_percent'] ?>%</td><td><?= (int)$pr['active'] ? 'активен' : 'выкл' ?></td></tr>
+    <?php endforeach; ?>
+  </table>
+
+<?php elseif ($tab === 'docs'): ?>
+  <div class="aform">
+    <p style="display:flex;gap:12px;flex-wrap:wrap">
+      <a class="btn small" href="doc.php?export=albums&fmt=json">Альбомы (JSON)</a>
+      <a class="btn small" href="doc.php?export=albums&fmt=xls">Альбомы (Excel/CSV)</a>
+      <a class="btn small" href="doc.php?export=orders&fmt=json">Заказы (JSON)</a>
+      <a class="btn small" href="doc.php?export=orders&fmt=xls">Заказы (Excel/CSV)</a>
+      <a class="btn small" href="doc.php?export=users&fmt=json">Клиенты (JSON)</a>
+      <a class="btn small" href="report_export.php?format=pdf" target="_blank">Сводный отчёт (PDF / Печать)</a>
+      <a class="btn small" href="report_export.php?format=json">Сводный отчёт (JSON)</a>
+      <a class="btn small" href="validate_client.php" target="_blank">Валидация ФИО (TransferSimulator)</a>
+    </p>
+  </div>
+  <?php $curTpl = $pdo->query("SELECT * FROM doc_templates WHERE doc_key = 'rental_contract'")->fetch(); ?>
+  <form class="aform" method="post">
+    <input type="hidden" name="act" value="tpl_save">
+    <input type="hidden" name="doc_key" value="rental_contract">
+    <label>заголовок шаблона договора<input name="title" value="<?= e($curTpl['title'] ?? '') ?>"></label>
+    <label>HTML-шаблон<textarea name="body_html" rows="6"><?= e($curTpl['body_html'] ?? '') ?></textarea></label>
+    <button class="btn">сохранить шаблон</button>
+  </form>
+
+<?php elseif ($tab === 'backups'): ?>
+  <div class="aform" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <form method="post" class="inline">
+      <input type="hidden" name="act" value="backup_create">
+      <button class="btn">создать резервную копию</button>
+    </form>
+    <?php $bFiles = is_dir(BACKUP_DIR) ? (glob(BACKUP_DIR . '/*.sql') ?: []) : []; ?>
+    <?php if ($bFiles): ?>
+      <form method="post" class="inline">
+        <input type="hidden" name="act" value="backup_restore">
+        <select name="backup_file">
+          <?php foreach ($bFiles as $bf): $bn = basename($bf); ?>
+            <option value="<?= e($bn) ?>"><?= e($bn) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <button class="btn small">восстановить</button>
+      </form>
+      <form method="post" class="inline" onsubmit="return confirm('Удалить выбранную резервную копию?')">
+        <input type="hidden" name="act" value="backup_delete">
+        <select name="backup_file">
+          <?php foreach ($bFiles as $bf): $bn = basename($bf); ?>
+            <option value="<?= e($bn) ?>"><?= e($bn) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <button class="delbtn">удалить</button>
+      </form>
+    <?php endif; ?>
+  </div>
+
+  <?php
+  $fAction = trim($_GET['log_action'] ?? '');
+  $auditStmt = $pdo->prepare('SELECT al.*, u.login FROM audit_log al LEFT JOIN users u ON u.id = al.user_id '
+      . ($fAction !== '' ? 'WHERE al.action LIKE ? ' : '') . 'ORDER BY al.id DESC LIMIT 50');
+  $auditStmt->execute($fAction !== '' ? ["%$fAction%"] : []);
+  ?>
+  <form method="get" style="margin:12px 0;display:flex;gap:10px">
+    <input type="hidden" name="tab" value="backups">
+    <input name="log_action" value="<?= e($fAction) ?>" placeholder="Фильтр по действию (например, order_, login_)">
+    <button class="btn small">фильтр</button>
+  </form>
+
+  <table>
+    <tr><th>id</th><th>время</th><th>пользователь</th><th>действие</th><th>описание</th><th>IP</th><th></th></tr>
+    <?php foreach ($auditStmt->fetchAll() as $al): ?>
+      <tr>
+        <td><?= (int)$al['id'] ?></td>
+        <td><?= e($al['created_at'] ?? '') ?></td>
+        <td><?= e($al['login'] ?? 'гость') ?></td>
+        <td><?= e($al['action'] ?? '') ?></td>
+        <td><?= e($al['description'] ?? '') ?></td>
+        <td><?= e($al['ip_address'] ?? '') ?></td>
+        <td>
+          <?php if (($al['entity_type'] ?? '') === 'order' && (!empty($al['snapshot_json']) || str_contains((string)($al['description'] ?? ''), ' | {'))): ?>
+            <form method="post" class="inline"><input type="hidden" name="act" value="audit_restore"><input type="hidden" name="log_id" value="<?= (int)$al['id'] ?>"><button class="btn small">восстановить</button></form>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+  </table>
 
 <?php elseif ($tab === 'cost'): ?>
   <p style="font-size:22px;color:#997C68;margin:0 0 10px">Полная стоимость заказа = количество × (материалы по нормам расхода + технологические операции по нормам).</p>

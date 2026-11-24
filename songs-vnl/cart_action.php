@@ -6,12 +6,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $type   = ($_POST['type'] ?? 'purchase') === 'rent' ? 'rent' : 'purchase';
     $action = $_POST['action'] ?? 'add';
 
-    $st = $pdo->prepare('SELECT id FROM albums WHERE id = ?');
+    $st = $pdo->prepare('SELECT id, title, stock FROM albums WHERE id = ?');
     $st->execute([$id]);
-    if ($st->fetch()) {
-        if ($action === 'remove')       cart_remove($id, $type);
-        elseif ($action === 'set_type') cart_set_type($id, $type);
-        else                            cart_add($id, $type);
+    $album = $st->fetch();
+
+    if ($album) {
+        if ($action === 'remove') {
+            cart_remove($id, $type);
+            flash_set('ok', 'Позиция удалена из корзины');
+        } elseif ($action === 'set_type') {
+            if ($type === 'rent' && (int)$album['stock'] < 1) {
+                flash_set('err', 'Альбом «' . $album['title'] . '» закончился на складе для аренды');
+            } else {
+                cart_set_type($id, $type);
+            }
+        } else {
+            if ((int)$album['stock'] < 1) {
+                flash_set('err', 'Альбом «' . $album['title'] . '» закончился на складе');
+            } else {
+                cart_add($id, $type);
+                flash_set('ok', 'Альбом «' . $album['title'] . '» добавлен в корзину');
+            }
+        }
     }
 }
 

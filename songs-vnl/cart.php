@@ -13,12 +13,13 @@ if (cart()) {
     foreach ($st->fetchAll() as $a) {
         $byId[(int)$a['id']] = $a;
     }
-    foreach (cart() as $it) {
+    foreach (cart() as $idx => $it) {
         $a = $byId[(int)$it['album_id']] ?? null;
         if (!$a) continue;
         $type = $it['type'] === 'rent' ? 'rent' : 'purchase';
         $sum = $type === 'rent' ? (float)$a['rent_price'] * RENT_DAYS : (float)$a['price'];
         $items[] = [
+            'idx'   => $idx,
             'album' => $a,
             'type'  => $type,
             'sum'   => $sum,
@@ -27,155 +28,225 @@ if (cart()) {
 }
 
 $subtotal = array_sum(array_column($items, 'sum'));
+$discount = 0.0;
 $err = '';
+$deliveryMode = $_POST['delivery'] ?? 'pickup';
+$selectedStore = (int)($_POST['store'] ?? 1);
+$courierAddress = trim($_POST['address'] ?? '');
+$promoCode = strtoupper(trim($_POST['promo'] ?? ''));
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $user && $items) {
-    foreach ($items as $it) {
-        if ((int)$it['album']['stock'] < 1) {
-            $err = 'Альбом «' . $it['album']['title'] . '» закончился на складе';
-            break;
-        }
-    }
-
-    $delivery = ($_POST['delivery'] ?? 'pickup') === 'courier' ? 'courier' : 'pickup';
-    $address = '';
-    if ($err === '') {
-        if ($delivery === 'pickup') {
-            $st = $pdo->prepare('SELECT address FROM stores WHERE id = ?');
-            $st->execute([(int)($_POST['store'] ?? 1)]);
-            $address = (string)($st->fetchColumn() ?: 'Тверская, 12');
-        } else {
-            $address = trim($_POST['address'] ?? '');
-            if ($address === '') {
-                $err = 'Укажите адрес доставки';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!$user) {
+        $err = 'Для оформления заказа необходимо войти в аккаунт';
+    } elseif (!$items) {
+        $err = 'Корзина пуста';
+    } else {
+        foreach ($items as $it) {
+            if ((int)$it['album']['stock'] < 1) {
+                $err = 'Альбом «' . $it['album']['title'] . '» закончился на складе';
+                break;
             }
         }
-    }
 
-    if ($err === '') {
-        $deliveryCost = $delivery === 'pickup' ? 0 : ($subtotal >= FREE_DELIVERY_FROM ? 0 : DELIVERY_COST);
-        $total = $subtotal + $deliveryCost;
-        $hasRent = in_array('rent', array_column($items, 'type'), true);
-
-        $pdo->beginTransaction();
-        try {
-            $st = $pdo->prepare('INSERT INTO orders (user_id,status,delivery,address,subtotal,discount,delivery_cost,total) VALUES (?,?,?,?,?,0,?,?)');
-            $st->execute([$user['id'], $hasRent ? 'issued' : 'paid', $delivery, $address, $subtotal, $deliveryCost, $total]);
-            $orderId = (int)$pdo->lastInsertId();
-
-            $from = date('Y-m-d');
-            $to = date('Y-m-d', strtotime('+' . RENT_DAYS . ' days'));
-            $insItem = $pdo->prepare('INSERT INTO order_items (order_id,album_id,type,price,qty,rent_from,rent_to) VALUES (?,?,?,?,1,?,?)');
-
-            foreach ($items as $it) {
-                $isRent = $it['type'] === 'rent';
-                $unitOrDayPrice = $isRent ? (float)$it['album']['rent_price'] : (float)$it['album']['price'];
-                $insItem->execute([
-                    $orderId,
-                    (int)$it['album']['id'],
-                    $it['type'],
-                    $unitOrDayPrice,
-                    $isRent ? $from : null,
-                    $isRent ? $to : null,
-                ]);
+        $deliveryMode = $deliveryMode === 'courier' ? 'courier' : 'pickup';
+        $address = '';
+        if ($err === '') {
+            if ($deliveryMode === 'pickup') {
+                $st = $pdo->prepare('SELECT address FROM stores WHERE id = ?');
+                $st->execute([$selectedStore]);
+                $address = (string)($st->fetchColumn() ?: 'Тверская, 12');
+            } else {
+                $address = $courierAddress;
+                if ($address === '') {
+                    $err = 'Укажите адрес доставки';
+                }
             }
+        }
 
-            $pdo->commit();
-            cart_clear();
-            flash_set('ok', 'Заказ успешно оформлен');
-            header('Location: cabinet.php');
-            exit;
-        } catch (PDOException $ex) {
-            $pdo->rollBack();
-            $err = 'Ошибка оформления заказа: ' . $ex->getMessage();
+        if ($err === '') {
+            if ($promoCode !== '') {
+                $stP = $pdo->prepare('SELECT * FROM promos WHERE UPPER(code) = ? AND active = 1');
+                $stP->execute([$promoCode]);
+                $promo = $stP->fetch();
+                if ($promo) {
+                    $discount = round($subtotal * ((float)$promo['discount_percent'] / 100), 2);
+                } else {
+                    $err = 'Промокод не найден или неактивен';
+                }
+            }
+        }
+
+        if ($err === '') {
+            $afterDiscount = max(0.0, $subtotal - $discount);
+            $deliveryCost = ($deliveryMode === 'courier' && $afterDiscount < FREE_DELIVERY_FROM) ? DELIVERY_COST : 0.0;
+            $total = $afterDiscount + $deliveryCost;
+            $today = date('Y-m-d');
+            $rentTo = date('Y-m-d', strtotime('+' . RENT_DAYS . ' days'));
+
+            $pdo->beginTransaction();
+            try {
+                $stOrd = $pdo->prepare("INSERT INTO orders (user_id, status, delivery, delivery_status, address, subtotal, discount, delivery_cost, total, created_at)
+                                      VALUES (?, 'paid', ?, 'pending', ?, ?, ?, ?, ?, NOW())");
+                $stOrd->execute([(int)$user['id'], $deliveryMode, $address, $subtotal, $discount, $deliveryCost, $total]);
+                $orderId = (int)$pdo->lastInsertId();
+
+                $stItem = $pdo->prepare("INSERT INTO order_items (order_id, album_id, type, qty, price, rent_from, rent_to)
+                                       VALUES (?, ?, ?, 1, ?, ?, ?)");
+                $stStock = $pdo->prepare("UPDATE albums SET stock = GREATEST(0, stock - 1) WHERE id = ? AND stock >= 1");
+
+                foreach ($items as $it) {
+                    $aid = (int)$it['album']['id'];
+                    $stStock->execute([$aid]);
+                    $isRent = $it['type'] === 'rent';
+                    $stItem->execute([
+                        $orderId,
+                        $aid,
+                        $it['type'],
+                        $it['sum'],
+                        $isRent ? $today : null,
+                        $isRent ? $rentTo : null,
+                    ]);
+                }
+
+                $stSum = $pdo->prepare('SELECT COALESCE(SUM(price), 0) FROM order_items WHERE order_id = ?');
+                $stSum->execute([$orderId]);
+                $actualSubtotal = (float)$stSum->fetchColumn();
+                $actualAfterDiscount = max(0.0, $actualSubtotal - $discount);
+                $actualDelivery = ($deliveryMode === 'courier' && $actualAfterDiscount < FREE_DELIVERY_FROM) ? DELIVERY_COST : 0.0;
+                $actualTotal = $actualAfterDiscount + $actualDelivery;
+
+                $pdo->prepare('UPDATE orders SET subtotal = ?, delivery_cost = ?, total = ? WHERE id = ?')
+                    ->execute([$actualSubtotal, $actualDelivery, $actualTotal, $orderId]);
+
+                $pdo->commit();
+                cart_clear();
+                log_action($pdo, (int)$user['id'], 'order_create', 'order', (string)$orderId, 'Оформлен заказ #' . $orderId . ' на сумму ' . $actualTotal . ' ₽');
+                flash_set('ok', 'Заказ #' . $orderId . ' успешно оформлен');
+                header('Location: cabinet.php');
+                exit;
+            } catch (PDOException $ex) {
+                $pdo->rollBack();
+                $err = 'Ошибка оформления заказа: ' . $ex->getMessage();
+            }
         }
     }
 }
 
+$afterDiscountPreview = max(0.0, $subtotal - $discount);
+$deliveryPreview = ($deliveryMode === 'courier' && $afterDiscountPreview < FREE_DELIVERY_FROM) ? DELIVERY_COST : 0.0;
+$totalPreview = $afterDiscountPreview + $deliveryPreview;
+
+$stores = $pdo->query('SELECT * FROM stores ORDER BY id')->fetchAll();
 require 'header.php';
-$rentFrom = date('d.m.Y');
-$rentTo = date('d.m.Y', strtotime('+' . RENT_DAYS . ' days'));
 ?>
 <main class="wrap-cart">
   <div>
     <?php if ($err !== ''): ?>
-      <p class="err"><?= e($err) ?></p>
+      <div class="err"><?= e($err) ?></div>
     <?php endif; ?>
 
     <?php if (!$items): ?>
-      <p class="empty">Корзина пуста. <a href="index.php" style="color:var(--teal)">В каталог</a>.</p>
-    <?php else: foreach ($items as $i => $it): $cv = cover_src($it['album']); ?>
-      <div class="line">
-        <?php if ($cv): ?><img class="thumb" src="<?= e($cv) ?>" alt="" style="object-fit:cover">
-        <?php else: ?><div class="thumb g<?= $i % 4 ?>"></div><?php endif; ?>
-        <div class="mid">
-          <form method="post" action="cart_action.php" class="typeswitch" title="сменить тип">
-            <input type="hidden" name="album_id" value="<?= (int)$it['album']['id'] ?>">
-            <input type="hidden" name="action" value="set_type">
-            <button class="chip<?= $it['type'] === 'purchase' ? ' on' : '' ?>" name="type" value="purchase">покупка</button>
-            <button class="chip<?= $it['type'] === 'rent' ? ' on' : '' ?>" name="type" value="rent">аренда</button>
+      <p class="empty">Ваша корзина пуста. <a href="index.php">Перейти в каталог</a></p>
+    <?php else: ?>
+      <?php foreach ($items as $it): $a = $it['album']; $grad = 'g' . ($it['idx'] % 4); ?>
+        <div class="line">
+          <div class="thumb <?= $grad ?>"></div>
+          <div class="mid">
+            <div class="typeswitch">
+              <form method="post" action="cart_action.php" class="inline">
+                <input type="hidden" name="album_id" value="<?= (int)$a['id'] ?>">
+                <input type="hidden" name="action" value="set_type">
+                <input type="hidden" name="type" value="purchase">
+                <button type="submit" class="chip <?= $it['type'] === 'purchase' ? 'on' : '' ?>">Покупка</button>
+              </form>
+              <form method="post" action="cart_action.php" class="inline">
+                <input type="hidden" name="album_id" value="<?= (int)$a['id'] ?>">
+                <input type="hidden" name="action" value="set_type">
+                <input type="hidden" name="type" value="rent">
+                <button type="submit" class="chip <?= $it['type'] === 'rent' ? 'on' : '' ?>">Аренда <?= RENT_DAYS ?> дн.</button>
+              </form>
+            </div>
+            <b title="<?= e($a['artist'] . ' — ' . $a['title']) ?>"><?= e($a['artist']) ?> — <?= e($a['title']) ?></b>
+          </div>
+          <span class="dates">в наличии: <?= (int)$a['stock'] ?> шт.</span>
+          <span class="price"><?= money($it['sum']) ?></span>
+          <form method="post" action="cart_action.php" class="inline">
+            <input type="hidden" name="album_id" value="<?= (int)$a['id'] ?>">
+            <input type="hidden" name="type" value="<?= e($it['type']) ?>">
+            <input type="hidden" name="action" value="remove">
+            <button type="submit" class="del" title="Удалить">×</button>
           </form>
-          <b><?= e($it['album']['artist']) ?> - <?= e($it['album']['title']) ?></b>
         </div>
-        <?php if ($it['type'] === 'rent'): ?><span class="dates">аренда с <?= $rentFrom ?> по <?= $rentTo ?></span><?php endif; ?>
-        <span class="price"><?= money($it['sum']) ?></span>
-        <form method="post" action="cart_action.php">
-          <input type="hidden" name="album_id" value="<?= (int)$it['album']['id'] ?>">
-          <input type="hidden" name="type" value="<?= e($it['type']) ?>">
-          <input type="hidden" name="action" value="remove">
-          <button class="del" title="убрать"><img src="images/cross.png" alt="×"></button>
-        </form>
-      </div>
-    <?php endforeach; endif; ?>
+      <?php endforeach; ?>
+    <?php endif; ?>
   </div>
 
-  <aside class="summary">
-    <h1>Оформление заказа</h1>
-    <?php if ($items): ?>
-    <form method="post" id="checkout">
+  <?php if ($items): ?>
+    <form method="post" class="summary">
+      <h1>Корзина</h1>
+
       <div class="switch">
-        <label><input type="radio" name="delivery" value="pickup" checked onchange="toggleDeliver()">Самовывоз</label>
-        <label><input type="radio" name="delivery" value="courier" onchange="toggleDeliver()">Курьер</label>
+        <label>
+          <input type="radio" name="delivery" value="pickup" <?= $deliveryMode === 'pickup' ? 'checked' : '' ?>>
+          <span>Самовывоз</span>
+        </label>
+        <label>
+          <input type="radio" name="delivery" value="courier" <?= $deliveryMode === 'courier' ? 'checked' : '' ?>>
+          <span>Курьер</span>
+        </label>
       </div>
-      <div class="sumlabel ruled">Адрес магазина</div>
-      <div id="pickupBox">
+
+      <div id="pickupBox" style="<?= $deliveryMode === 'courier' ? 'display:none' : '' ?>">
+        <div class="sumlabel ruled">Пункт выдачи</div>
         <div class="selwrap">
-          <select name="store" onchange="showAddr(this)">
-            <?php foreach ($pdo->query('SELECT * FROM stores ORDER BY id') as $s): ?>
-              <option value="<?= (int)$s['id'] ?>" data-addr="<?= e($s['address']) ?>">Магазин “Songs.vnl”</option>
+          <select name="store">
+            <?php foreach ($stores as $s): ?>
+              <option value="<?= (int)$s['id'] ?>" <?= $selectedStore === (int)$s['id'] ? 'selected' : '' ?>>
+                <?= e($s['address']) ?> (<?= e($s['hours']) ?>)
+              </option>
             <?php endforeach; ?>
           </select>
         </div>
-        <div class="addr" id="storeAddr"></div>
-        <div class="hint">Выберите магазин самовывоза — адрес подставится автоматически</div>
       </div>
-      <div id="courierBox" hidden>
-        <input class="addr" name="address" placeholder="Москва, ул. Пролетарская, 14">
-        <div class="hint">Город, улица, дом, квартира — куда привезти заказ</div>
+
+      <div id="courierBox" style="<?= $deliveryMode === 'courier' ? '' : 'display:none' ?>">
+        <div class="sumlabel ruled">Адрес доставки</div>
+        <input class="addr" name="address" value="<?= e($courierAddress) ?>" placeholder="Город, улица, дом, квартира">
       </div>
-      <div class="sumlabel">Оплата</div>
+
+      <div class="sumlabel ruled">Промокод</div>
+      <input class="addr" name="promo" value="<?= e($promoCode) ?>" placeholder="Например, VINYL10">
+
       <div class="sumrow"><span>Подытог</span><b><?= money($subtotal) ?></b></div>
-      <div class="sumrow"><span>Скидка</span><b>0 ₽</b></div>
-      <div class="sumrow"><span>Доставка</span><b id="delivLabel">Бесплатно</b></div>
-      <div class="sumlabel">Итог</div>
-      <div class="sumtotal"><span>К оплате</span><b id="totalLabel"><?= money($subtotal) ?></b></div>
-      <?php if ($user): ?><button class="paybtn" type="submit">Оплатить</button>
-      <?php else: ?><a class="paybtn" href="login.php">Оплатить</a><?php endif; ?>
+      <?php if ($discount > 0): ?>
+        <div class="sumrow"><span>Скидка</span><b>−<?= money($discount) ?></b></div>
+      <?php endif; ?>
+      <div class="sumrow"><span>Доставка</span><b><?= $deliveryPreview > 0 ? money($deliveryPreview) : '0 ₽' ?></b></div>
+      <div class="sumtotal"><span>Итого</span><b><?= money($totalPreview) ?></b></div>
+
+      <?php if ($user): ?>
+        <button class="paybtn" type="submit">Оплатить заказ</button>
+      <?php else: ?>
+        <a class="paybtn" href="login.php">Войти для заказа</a>
+      <?php endif; ?>
     </form>
-    <?php endif; ?>
-  </aside>
+
+    <script>
+      (function () {
+        var radios = document.querySelectorAll('input[name="delivery"]');
+        var pBox = document.getElementById('pickupBox');
+        var cBox = document.getElementById('courierBox');
+        if (!radios.length || !pBox || !cBox) return;
+        function toggleBoxes() {
+          var checked = document.querySelector('input[name="delivery"]:checked');
+          var isCourier = checked && checked.value === 'courier';
+          pBox.style.display = isCourier ? 'none' : '';
+          cBox.style.display = isCourier ? '' : 'none';
+        }
+        radios.forEach(function (r) { r.addEventListener('change', toggleBoxes); });
+        toggleBoxes();
+      })();
+    </script>
+  <?php endif; ?>
 </main>
-<script>
-function showAddr(sel){ var el = document.getElementById('storeAddr'); if (el && sel.selectedOptions[0]) el.textContent = sel.selectedOptions[0].dataset.addr; }
-var storeSel = document.querySelector('select[name=store]');
-if (storeSel) showAddr(storeSel);
-function toggleDeliver(){
-  var c = document.querySelector('input[name=delivery]:checked').value === 'courier';
-  document.getElementById('pickupBox').hidden = c;
-  document.getElementById('courierBox').hidden = !c;
-  var cost = (!c || <?= (int)$subtotal ?> >= <?= FREE_DELIVERY_FROM ?>) ? 0 : <?= DELIVERY_COST ?>;
-  document.getElementById('delivLabel').textContent = cost ? cost + ' ₽' : 'Бесплатно';
-  document.getElementById('totalLabel').textContent = (<?= (int)$subtotal ?> + cost).toLocaleString('ru-RU') + ' ₽';
-}
-</script>
 <?php require 'footer.php'; ?>

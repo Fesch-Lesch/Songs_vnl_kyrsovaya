@@ -13,45 +13,94 @@ $today = date('Y-m-d');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['save_profile'])) {
+        $namePlain    = trim($_POST['name'] ?? '');
+        $phonePlain   = trim($_POST['phone'] ?? '');
+        $addressPlain = trim($_POST['address'] ?? '');
+
         $pdo->prepare('UPDATE users SET name = ?, phone = ?, address = ? WHERE id = ?')
-            ->execute([trim($_POST['name'] ?? ''), trim($_POST['phone'] ?? ''), trim($_POST['address'] ?? ''), $user['id']]);
+            ->execute([
+                encrypt_pii($namePlain),
+                encrypt_pii($phonePlain),
+                encrypt_pii($addressPlain),
+                (int)$user['id'],
+            ]);
+        log_action($pdo, (int)$user['id'], 'profile_update', 'user', (string)$user['id'], 'Обновление профиля');
         $msg = 'Профиль сохранён';
     } elseif (isset($_POST['change_pass'])) {
-        if (!password_verify($_POST['old'] ?? '', $user['password_hash'])) {
+        $oldPass = $_POST['old'] ?? '';
+        $newPass = $_POST['new'] ?? '';
+        $confirm = $_POST['confirm'] ?? '';
+
+        if (!password_verify($oldPass, $user['password_hash'])) {
             $err = 'Старый пароль неверен';
-        } elseif (($errp = password_errors($_POST['new'] ?? ''))) {
+        } elseif (($errp = password_errors($newPass))) {
             $err = 'Новый пароль слабый: ' . implode(', ', $errp);
-        } elseif (($_POST['new'] ?? '') !== ($_POST['confirm'] ?? '')) {
+        } elseif (is_password_reused($pdo, (int)$user['id'], $newPass)) {
+            $err = 'Новый пароль совпадает с одним из последних 5 паролей';
+        } elseif ($newPass !== $confirm) {
             $err = 'Пароли не совпадают';
         } else {
-            $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-                ->execute([password_hash($_POST['new'], PASSWORD_DEFAULT), $user['id']]);
+            $hash = password_hash($newPass, PASSWORD_DEFAULT);
+            $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([$hash, (int)$user['id']]);
+            record_password_history($pdo, (int)$user['id'], $hash);
+            log_action($pdo, (int)$user['id'], 'password_change', 'user', (string)$user['id'], 'Смена пароля');
             $msg = 'Пароль изменён';
         }
     } elseif (isset($_POST['extend'])) {
         $itemId = (int)$_POST['extend'];
-        $st = $pdo->prepare("UPDATE order_items oi
-                             JOIN orders o ON o.id = oi.order_id
-                             SET oi.rent_to = DATE_ADD(oi.rent_to, INTERVAL ? DAY)
-                             WHERE oi.id = ? AND o.user_id = ? AND oi.type = 'rent' AND o.status = 'issued'");
-        $st->execute([RENT_DAYS, $itemId, $user['id']]);
-        if ($st->rowCount() > 0) $msg = 'Аренда продлена на ' . RENT_DAYS . ' дн.';
-        else $err = 'Не удалось продлить аренду';
+        $pdo->beginTransaction();
+        try {
+            $stItem = $pdo->prepare("SELECT oi.id, oi.order_id, oi.qty, oi.rent_to, o.status, a.rent_price
+                                   FROM order_items oi
+                                   JOIN orders o ON o.id = oi.order_id
+                                   JOIN albums a ON a.id = oi.album_id
+                                   WHERE oi.id = ? AND o.user_id = ? AND oi.type = 'rent' AND o.status = 'issued'
+                                   FOR UPDATE");
+            $stItem->execute([$itemId, (int)$user['id']]);
+            $row = $stItem->fetch();
+
+            if (!$row) {
+                $pdo->rollBack();
+                $err = 'Не удалось продлить аренду';
+            } else {
+                $addedPrice = (float)$row['rent_price'] * RENT_DAYS * max(1, (int)$row['qty']);
+                $pdo->prepare('UPDATE order_items SET rent_to = DATE_ADD(rent_to, INTERVAL ? DAY), price = price + ? WHERE id = ?')
+                    ->execute([RENT_DAYS, $addedPrice, $itemId]);
+
+                $stSum = $pdo->prepare('SELECT COALESCE(SUM(price), 0) FROM order_items WHERE order_id = ?');
+                $stSum->execute([(int)$row['order_id']]);
+                $newSubtotal = (float)$stSum->fetchColumn();
+
+                $pdo->prepare('UPDATE orders SET subtotal = ?, total = GREATEST(0, ? - COALESCE(discount, 0)) + COALESCE(delivery_cost, 0) WHERE id = ?')
+                    ->execute([$newSubtotal, $newSubtotal, (int)$row['order_id']]);
+
+                $pdo->commit();
+                log_action($pdo, (int)$user['id'], 'rent_extend', 'order_item', (string)$itemId, 'Продление аренды на ' . RENT_DAYS . ' дн.');
+                $msg = 'Аренда продлена на ' . RENT_DAYS . ' дн.';
+            }
+        } catch (PDOException $ex) {
+            $pdo->rollBack();
+            $err = 'Ошибка продления аренды: ' . $ex->getMessage();
+        }
     } elseif (isset($_POST['pay_fine'])) {
         $orderId = (int)$_POST['pay_fine'];
         $st = $pdo->prepare("UPDATE orders SET status = 'done' WHERE id = ? AND user_id = ?");
-        $st->execute([$orderId, $user['id']]);
-        if ($st->rowCount() > 0) $msg = 'Штраф оплачен, аренда завершена';
-        else $err = 'Заказ не найден';
+        $st->execute([$orderId, (int)$user['id']]);
+        if ($st->rowCount() > 0) {
+            log_action($pdo, (int)$user['id'], 'fine_paid', 'order', (string)$orderId, 'Оплата штрафа и завершение аренды');
+            $msg = 'Штраф оплачен, аренда завершена';
+        } else {
+            $err = 'Заказ не найден';
+        }
     } elseif (isset($_POST['cancel'])) {
         $orderId = (int)$_POST['cancel'];
-        $st = $pdo->prepare("SELECT o.id, o.status,
+        $st = $pdo->prepare("SELECT o.*,
                                     MAX(CASE WHEN oi.type = 'rent' AND o.status = 'issued' AND oi.rent_to < ? THEN 1 ELSE 0 END) AS has_overdue
                              FROM orders o
                              LEFT JOIN order_items oi ON oi.order_id = o.id
                              WHERE o.id = ? AND o.user_id = ?
-                             GROUP BY o.id, o.status");
-        $st->execute([$today, $orderId, $user['id']]);
+                             GROUP BY o.id");
+        $st->execute([$today, $orderId, (int)$user['id']]);
         $ord = $st->fetch();
 
         if (!$ord) {
@@ -59,10 +108,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ((int)$ord['has_overdue'] === 1) {
             $err = 'Сначала оплатите штраф за просроченную аренду';
         } else {
+            $snapshot = $ord;
+            unset($snapshot['has_overdue']);
+
             $pdo->beginTransaction();
             try {
-                $pdo->prepare('DELETE FROM orders WHERE id = ? AND user_id = ?')->execute([$orderId, $user['id']]);
+                $pdo->prepare('DELETE FROM order_items WHERE order_id = ?')->execute([$orderId]);
+                $pdo->prepare('DELETE FROM orders WHERE id = ? AND user_id = ?')->execute([$orderId, (int)$user['id']]);
                 $pdo->commit();
+                log_action($pdo, (int)$user['id'], 'order_delete', 'order', (string)$orderId, 'Удаление заказа пользователем', $snapshot);
                 $msg = 'Заказ удалён';
             } catch (PDOException $ex) {
                 $pdo->rollBack();
@@ -73,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = current_user($pdo);
 }
 
-$st = $pdo->prepare('SELECT o.id AS order_id, o.status, o.created_at,
+$st = $pdo->prepare('SELECT o.id AS order_id, o.status, o.delivery, o.delivery_status, o.courier, o.created_at,
                             oi.id AS item_id, oi.type, oi.price, oi.rent_from, oi.rent_to,
                             a.artist, a.title
                      FROM orders o
@@ -81,7 +135,7 @@ $st = $pdo->prepare('SELECT o.id AS order_id, o.status, o.created_at,
                      JOIN albums a ON a.id = oi.album_id
                      WHERE o.user_id = ?
                      ORDER BY o.created_at DESC, oi.id');
-$st->execute([$user['id']]);
+$st->execute([(int)$user['id']]);
 $cards = $st->fetchAll();
 
 require 'header.php';
@@ -132,6 +186,7 @@ require 'header.php';
         <div class="top">
           <span class="status <?= e($status) ?>"><?= e($label) ?></span>
           <span class="chip"><?= $c['type'] === 'rent' ? 'аренда' : 'покупка' ?></span>
+          <span class="chip">доставка: <?= e($c['delivery_status'] ?? 'pending') ?><?= !empty($c['courier']) ? ' (' . e($c['courier']) . ')' : '' ?></span>
           <span class="date"><?= date('d.m.Y · H:i', strtotime($c['created_at'])) ?></span>
           <?php if ($c['type'] === 'rent' && $c['rent_from'] && $c['rent_to']): ?>
             <span class="rent">аренда с <?= date('d.m.Y', strtotime($c['rent_from'])) ?> по <?= date('d.m.Y', strtotime($c['rent_to'])) ?></span>
@@ -144,19 +199,18 @@ require 'header.php';
         <div class="acts">
           <?php if ($status === 'issued' && $c['type'] === 'rent'): ?>
             <form method="post"><button class="obtn" name="extend" value="<?= (int)$c['item_id'] ?>">Продлить</button></form>
+            <a class="obtn ghost" href="doc.php?order_id=<?= (int)$c['order_id'] ?>&doc=rental_contract" target="_blank"><span><b>Договор</b></span></a>
             <form method="post" onsubmit="return confirm('Удалить заказ аренды?')">
               <button class="obtn ghost" name="cancel" value="<?= (int)$c['order_id'] ?>"><span><b>Удалить</b></span></button>
             </form>
-          <?php elseif ($status === 'paid'): ?>
-            <form method="post" onsubmit="return confirm('Отменить и удалить заказ?')">
-              <button class="obtn ghost" name="cancel" value="<?= (int)$c['order_id'] ?>"><span><b>Отменить</b></span></button>
-            </form>
           <?php elseif ($status === 'overdue'): ?>
             <form method="post"><button class="obtn fine" name="pay_fine" value="<?= (int)$c['order_id'] ?>">Оплатить штраф</button></form>
+            <a class="obtn ghost" href="doc.php?order_id=<?= (int)$c['order_id'] ?>&doc=return_act" target="_blank"><span><b>Акт возврата</b></span></a>
             <span class="fine-note">штраф за <?= $overDays ?> дн. · <?= money($overDays * FINE_PER_DAY) ?></span>
           <?php else: ?>
+            <a class="obtn ghost" href="doc.php?order_id=<?= (int)$c['order_id'] ?>&doc=<?= $c['type'] === 'rent' ? 'return_act' : 'invoice' ?>" target="_blank"><span><b>Документ</b></span></a>
             <form method="post" onsubmit="return confirm('Удалить заказ?')">
-              <button class="obtn ghost" name="cancel" value="<?= (int)$c['order_id'] ?>"><span><b>Удалить</b></span></button>
+              <button class="obtn ghost" name="cancel" value="<?= (int)$c['order_id'] ?>"><span><b><?= $status === 'paid' ? 'Отменить' : 'Удалить' ?></b></span></button>
             </form>
           <?php endif; ?>
         </div>

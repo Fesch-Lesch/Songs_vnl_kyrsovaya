@@ -392,3 +392,37 @@ header.top .pill.outline.icon>span>b{font-size:30px;
 .captchabox.locked .pz,
 .captchabox.locked .slot{pointer-events:none}           /* после «проверено» паззл не трогаем */
 .captchabox.locked{outline:2px solid #6C7D54;outline-offset:2px}
+.req {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.req span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 239, 227, 0.22);
+  background: #4a4540;
+  color: #f6efe3;
+  font-family: 'Alumni Sans SC', Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.req span.ok {
+  padding: 5px 12px;
+  border: 1px solid rgba(246, 239, 227, 0.35);
+  background: var(--olive, #6c7d54);
+  color: #ffffff;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}

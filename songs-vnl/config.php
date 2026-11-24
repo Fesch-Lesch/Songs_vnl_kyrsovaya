@@ -15,6 +15,8 @@ define('DB_NAME', 'songs_vnl');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 define('AUDIO_DIR', 'audio');
+define('BACKUP_DIR', __DIR__ . '/backups');
+define('PII_KEY', hash('sha256', 'songs_vnl_pii_key_2026', true));
 
 try {
     $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [
@@ -40,11 +42,50 @@ function money(float|int|string $v): string {
     return str_replace(' ', '&nbsp;', number_format((float)$v, 0, '.', ' ')) . '&nbsp;₽';
 }
 
+function encrypt_pii(string $plain): string {
+    if ($plain === '' || str_starts_with($plain, 'enc:')) {
+        return $plain;
+    }
+    $iv = random_bytes(16);
+    $cipher = openssl_encrypt($plain, 'AES-256-CBC', PII_KEY, OPENSSL_RAW_DATA, $iv);
+    if ($cipher === false) {
+        return $plain;
+    }
+    return 'enc:' . base64_encode($iv . $cipher);
+}
+
+function decrypt_pii(?string $stored): string {
+    if ($stored === null || $stored === '') {
+        return '';
+    }
+    if (!str_starts_with($stored, 'enc:')) {
+        return $stored;
+    }
+    $raw = base64_decode(substr($stored, 4), true);
+    if ($raw === false || strlen($raw) < 17) {
+        return $stored;
+    }
+    $iv = substr($raw, 0, 16);
+    $cipher = substr($raw, 16);
+    $plain = openssl_decrypt($cipher, 'AES-256-CBC', PII_KEY, OPENSSL_RAW_DATA, $iv);
+    return $plain !== false ? $plain : $stored;
+}
+
+function hydrate_user_pii(array $u): array {
+    foreach (['name', 'phone', 'address'] as $f) {
+        if (array_key_exists($f, $u)) {
+            $u[$f] = decrypt_pii($u[$f]);
+        }
+    }
+    return $u;
+}
+
 function current_user(PDO $pdo): ?array {
     if (empty($_SESSION['user_id'])) return null;
     $st = $pdo->prepare('SELECT * FROM users WHERE id = ?');
     $st->execute([(int)$_SESSION['user_id']]);
-    return $st->fetch() ?: null;
+    $u = $st->fetch();
+    return $u ? hydrate_user_pii($u) : null;
 }
 
 function flash_set(string $type, string $text): void {
@@ -88,10 +129,24 @@ function cart_remove(int $id, string $type): void {
 }
 
 function cart_set_type(int $id, string $type): void {
-    foreach ($_SESSION['cart'] ?? [] as &$it) {
-        if ((int)$it['album_id'] === $id) $it['type'] = $type;
+    $type = $type === 'rent' ? 'rent' : 'purchase';
+    $updated = false;
+    $next = [];
+    foreach ($_SESSION['cart'] ?? [] as $it) {
+        if ((int)$it['album_id'] === $id) {
+            if ($it['type'] === $type) {
+                $updated = true;
+                $next[] = $it;
+            } elseif (!$updated) {
+                $it['type'] = $type;
+                $updated = true;
+                $next[] = $it;
+            }
+        } else {
+            $next[] = $it;
+        }
     }
-    unset($it);
+    $_SESSION['cart'] = $next;
 }
 
 function cart_clear(): void {
@@ -251,4 +306,46 @@ function password_errors(string $p): array {
     if (!preg_match('/[0-9]/', $p))        $err[] = '0–9';
     if (!preg_match('/[^A-Za-z0-9]/', $p)) $err[] = 'спецсимвол';
     return $err;
+}
+
+function record_password_history(PDO $pdo, int $userId, string $passwordHash): void {
+    try {
+        $st = $pdo->prepare('INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)');
+        $st->execute([$userId, $passwordHash]);
+        $del = $pdo->prepare('DELETE FROM password_history
+                              WHERE user_id = ?
+                                AND id NOT IN (
+                                    SELECT id FROM (
+                                        SELECT id FROM password_history WHERE user_id = ? ORDER BY id DESC LIMIT 5
+                                    ) t
+                                )');
+        $del->execute([$userId, $userId]);
+    } catch (PDOException $ex) {
+        // Ignore if table is absent in minimal setups
+    }
+}
+
+function is_password_reused(PDO $pdo, int $userId, string $plainPassword): bool {
+    try {
+        $st = $pdo->prepare('SELECT password_hash FROM password_history WHERE user_id = ? ORDER BY id DESC LIMIT 5');
+        $st->execute([$userId]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $oldHash) {
+            if ($oldHash && password_verify($plainPassword, (string)$oldHash)) {
+                return true;
+            }
+        }
+    } catch (PDOException $ex) {
+        // Ignore if table is absent
+    }
+    return false;
+}
+
+function log_action(PDO $pdo, ?int $userId, string $action, string $entityType, string $entityId, string $description = '', ?array $snapshot = null): void {
+    $snapshotJson = $snapshot !== null ? json_encode($snapshot, JSON_UNESCAPED_UNICODE) : null;
+    try {
+        $st = $pdo->prepare('INSERT INTO audit_log (user_id, action, entity_type, entity_id, description, snapshot_json, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $st->execute([$userId, $action, $entityType, $entityId !== '' ? $entityId : null, $description, $snapshotJson, $_SERVER['REMOTE_ADDR'] ?? '']);
+    } catch (PDOException $ex) {
+        // Fallback if audit_log schema varies
+    }
 }

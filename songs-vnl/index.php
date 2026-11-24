@@ -193,6 +193,41 @@ require 'header.php';
           </form>
         </div>
       </div>
+      <?php
+$curUser = current_user($pdo);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_review']) && $curUser && $modal) {
+    $rating = max(1, min(5, (int)($_POST['rating'] ?? 5)));
+    $comment = trim($_POST['comment'] ?? '');
+    if ($comment !== '') {
+        $pdo->prepare('INSERT INTO reviews (album_id, user_id, rating, comment) VALUES (?,?,?,?)')
+            ->execute([(int)$modal['id'], (int)$curUser['id'], $rating, $comment]);
+        log_action($pdo, (int)$curUser['id'], 'review_add', 'album', (string)$modal['id'], "Отзыв ($rating/5) к альбому #" . (int)$modal['id']);
+        flash_set('ok', 'Отзыв добавлен');
+        header('Location: ' . $_SERVER['REQUEST_URI']);
+        exit;
+    }
+}
+$revStmt = $pdo->prepare('SELECT r.rating, r.comment, r.created_at, u.login FROM reviews r JOIN users u ON u.id = r.user_id WHERE r.album_id = ? ORDER BY r.id DESC');
+$revStmt->execute([(int)$modal['id']]);
+$reviewsList = $revStmt->fetchAll();
+$avgRating = $reviewsList ? round(array_sum(array_column($reviewsList, 'rating')) / count($reviewsList), 1) : null;
+?>
+<h4 class="rl" style="margin-top:16px">Reviews <?= $avgRating ? '(средняя оценка: ' . $avgRating . '/5)' : '' ?></h4>
+<div style="max-height:140px;overflow:auto;font-size:20px;margin-bottom:8px">
+  <?php foreach ($reviewsList as $rv): ?>
+    <div style="margin-bottom:6px"><b><?= e($rv['login']) ?></b> · ★ <?= (int)$rv['rating'] ?>/5: <?= e($rv['comment']) ?></div>
+  <?php endforeach; ?>
+  <?php if (!$reviewsList): ?><div style="color:var(--muted)">Отзывов пока нет</div><?php endif; ?>
+</div>
+<?php if ($curUser): ?>
+<form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+  <select name="rating" style="background:var(--input);color:var(--cream);border:0;border-radius:8px;padding:4px 8px;font-size:18px">
+    <?php for ($r = 5; $r >= 1; $r--): ?><option value="<?= $r ?>"><?= $r ?> ★</option><?php endfor; ?>
+  </select>
+  <input name="comment" required placeholder="Ваш отзыв..." style="flex:1;min-width:160px;background:var(--input);color:var(--cream);border:0;border-radius:8px;padding:4px 10px;font-size:18px">
+  <button class="btn small" type="submit" name="add_review" value="1">Оставить</button>
+</form>
+<?php endif; ?>
     </div>
   </div>
 </div>
